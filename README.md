@@ -3,12 +3,18 @@
 
 ## 1. tf_server
 
+> **Priority:**		5/5  
+> **Complexity:** 	1/5
+
 reads from /tf topic and:
  1a. publish msg with human tf 	(/tf/human) [from /tf , have "frame_id: world" and "children_frame_id:" to something beside "base", block ids and the like]
  1b. publish msg with robot tf 	(/tf/baxter) [from /tf, have "frame_id:" different from "world" except for (frame_id: world; children_frame_id: base)]
  1c. server for blocks tf 		(/tf/blocks) [from /tf, "frame_id: world" and "child_frame_id:" either a char, "Bluebox", "Redbox", "MiddlePlacement", "MiddlePlacementN"]
 
 ## 2. check_collision
+
+> **Priority:**		1/5  
+> **Complexity:** 	3/5
 
 probably implements FCL interface (https://github.com/flexible-collision-library/fcl) (one for each arm)
  2a. gather data from /tf/human -> make cylinders
@@ -21,13 +27,20 @@ probably implements FCL interface (https://github.com/flexible-collision-library
 
 ## 3. closest_block
 
+> **Priority:**		4/5  
+> **Complexity:** 	4/5
+
  3a. implement a server for "block_to_pick" request, with current eef pose (geometry_msgs::Pose) and arm (string)
  3b. when the request is received it makes itself a request to /tf_server for /tf/blocks
  3c. check the closest block to the arm pose, between those in the correct half-table (depending on arm designed space)
 		Keep in mind that, in case the arm specified is the left one and a block is in the MiddlePlacementN (how to track that? Parameter Server?)
-		that block should take precedence.
+		that block should take precedence; at the same time, if the blue block is obstructed by a red one, this should be removed first (but trying
+		to delay picking it, low priority).
 
 ## 4. closest_empty_space
+
+> **Priority:**		3/5  
+> **Complexity:** 	3/5
 
  4a. implement a server for /empty_pos, with block_pos field (geometry_msgs::Pose)
  4b. randomly sample a point around that pos in some way:
@@ -39,6 +52,9 @@ probably implements FCL interface (https://github.com/flexible-collision-library
 	checking distance relative to a query point. No idea about that for the moment, not really necessary right now.
 	
 ## 5. FiniteStateMachine
+
+> **Priority:**		3/5  
+> **Complexity:** 	4/5
 
 two of them, actually the same code but run as two different nodes with ARM as a parameter.
  5a. TODO: fully fledged explanation of it
