@@ -65,4 +65,4 @@ two of them, actually the same code but run as two different nodes with ARM as a
 
 # Useful resources
 
-For the retrieval of the closest block to either the current eef pose or to a random empty spot we could improve performances with a (!k-d-trees)[https://en.wikipedia.org/wiki/K-d_tree]; however, the gain in terms of performances at this scale could be negligible so a linear search should suffice for now. If there's time to refine the project consider this option.
+For the retrieval of the closest block to either the current eef pose or to a random empty spot we could improve performances with a [k-d-tree](https://en.wikipedia.org/wiki/K-d_tree); however, the gain in terms of performances at this scale could be negligible so a linear search should suffice for now. If there's time to refine the project consider this option.
