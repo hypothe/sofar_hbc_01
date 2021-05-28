@@ -1,0 +1,8 @@
+# Request for current blocks position w.r.t. world frame
+
+## rqst: empty, a signal
+
+---
+## rply: a vector with all the blocks
+
+geometry_msgs/PoseStamped[] blocks_poses

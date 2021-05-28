@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    <rosparam file="$(find sofar_hbc_01)/config/blocks_param.yaml" command="load"/>
+    < node name="closest_block" pkg="sofar_hbc_01" type="closest_block.cpp" output="screen" >
+    
+    <include file="$(find human_baxter_collaboration)/launch/human_baxter_collaboration.launch" />
+</launch>

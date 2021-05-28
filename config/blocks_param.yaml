@@ -1,1 +1,9 @@
-blocks_color:	{A: "r", B: "r", C: "b", D: "r", E: "b", F: "r", G: "b", H: "r", I: "r", L: "r", M: "b"}
+blocks_colors:	{A: "r", B: "r", C: "b", D: "r", E: "b", F: "r", G: "b", H: "r", I: "r", L: "r", M: "b"}
+block_placed: {A: false, B: false, C: false, D: false, E: false, F: false, G: false, H: false, I: false, L: false, M: false}
+
+blocks_dim: 0.05
+
+table_pos: [0.7673182, 0.0, 0.4]
+table_dim: [0.6, 2.0, 0.8]
+
+
