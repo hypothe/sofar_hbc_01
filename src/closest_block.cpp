@@ -172,6 +172,10 @@ int main(int argc, char** argv)
 	
 	// client that retrieves the current blocks tf
   client_blocks_tf = node_handle.serviceClient<sofar_hbc_01::BlocksPoses>("/tf/blocks");
+  while(!client_blocks_tf.exists()){
+  	ROS_WARN("Service %s not found.", client_blocks_tf.getService().c_str());
+	  client_blocks_tf.waitForExistence(ros::Duration(2));
+  }
   // service that gets one EEF pose and returns the pose of the block closest to it
 	ros::ServiceServer service_closest_block = node_handle.advertiseService("/block_to_pick", blockCllbck);
 	
