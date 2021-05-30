@@ -1,5 +1,15 @@
 /* Author: Marco G. Fedozzi */
 
+/*
+	Current limitations:
+	- for the LEFT arm blocks are delivered always in the center of the Bluebox,
+		not ideal in the simulation scenario (although in realiy, since they're dropped
+		and nod placed, they should roll over and not stack).
+	- in case of a failed trajectory replanning happens immediately, and not when the
+		scene is considered free: might not be a problem in a non-slowly evolving scenario
+	- do the grippers have enough time to open and close?
+*/
+
 #include "ros/ros.h"
 
 #include <moveit/move_group_interface/move_group_interface.h>
@@ -17,6 +27,7 @@
 #include "geometry_msgs/Point.h"
 #include "geometry_msgs/Pose.h"
 #include "geometry_msgs/PoseStamped.h"
+#include "human_baxter_collaboration/BaxterGripperOpen.h"
 #include "human_baxter_collaboration/BaxterTrajectory.h"
 #include "human_baxter_collaboration/BaxterStopTrajectory.h"
 #include "human_baxter_collaboration/BaxterResultTrajectory.h"
@@ -28,7 +39,9 @@
 enum states_ {START, REACH, PICK, RAISE, PLACE_BLUE, REMOVE_RED, END};
 
 int state_ = START;
-int next_state_ = START;
+int next_state_ = REACH;
+geometry_msgs::Pose BLOCK_DEST_;
+
 geometry_msgs::Pose goal_pose_;
 geometry_msgs::Point block_grasp_offset_;
 
@@ -41,16 +54,48 @@ moveit::planning_interface::MoveGroupInterface *move_group_interface;	moveit::pl
 
 ros::ServiceClient client_b2p, client_ces;
 ros::Publisher traj_pub;
+ros::Publisher gripper_pub;
 
 std::shared_ptr<Block> block = NULL;
 
-void loadParam(){
+void graspQuat(geometry_msgs::Quaternion* orig_orientation){
+	tf2::Quaternion q_orig;
+	// Get the original orientation of 'commanded_pose'
+	tf2::convert(*orig_orientation, q_orig);
+	// make eef perpendicular to the table
+	q_orig.setRPY(M_PI, 0, M_PI);
+	q_orig.normalize();
+	// Stuff the new rotation back into the pose. This requires conversion into a msg type
+	tf2::convert(q_orig, *orig_orientation);
+}
+geometry_msgs::Pose offsetGoal(geometry_msgs::Pose goal_pose){
+	geometry_msgs::Pose ogp = goal_pose;
+	
+	ogp.position.x += block_grasp_offset_.x;
+	ogp.position.y += block_grasp_offset_.y;
+	ogp.position.z += block_grasp_offset_.z;
+	
+	graspQuat(&(ogp.orientation));
 
+	return ogp;
+
+}
+
+void loadParam(){
+	std::vector<double> tmp_dest;
+	
   if(!ros::param::get("~arm", ARM)){
   	ROS_ERROR("No parameter called '~arm' found.");
   	ros::shutdown();
   	return;
   }
+  if(!ros::param::get(std::string("block_dest_"+ARM), tmp_dest)){
+  	ROS_ERROR("No parameter called 'block_dest_%s' found.", ARM.c_str());
+  	ros::shutdown();
+  	return;
+  }
+  BLOCK_DEST_.position.x = tmp_dest[0]; BLOCK_DEST_.position.y = tmp_dest[1]; BLOCK_DEST_.position.z = tmp_dest[2];
+  BLOCK_DEST_ = offsetGoal(BLOCK_DEST_);
   
   PLANNING_GROUP = ARM+"_arm";
   move_group_interface = new moveit::planning_interface::MoveGroupInterface(PLANNING_GROUP);
@@ -61,18 +106,8 @@ void loadParam(){
 	
 	block_grasp_offset_.x = 0;
 	block_grasp_offset_.y = 0;
-	block_grasp_offset_.z = 0.1;
+	block_grasp_offset_.z = 0.1; // 10 cm upward offset
 	
-}
-void graspQuat(geometry_msgs::Quaternion* orig_orientation){
-	tf2::Quaternion q_orig;
-	// Get the original orientation of 'commanded_pose'
-	tf2::convert(*orig_orientation, q_orig);
-	// make eef perpendicular to the table
-	q_orig.setRPY(M_PI, 0, M_PI);
-	q_orig.normalize();
-	// Stuff the new rotation back into the pose. This requires conversion into a msg type
-	tf2::convert(q_orig, *orig_orientation);
 }
 
 void addTableObst(){
@@ -135,34 +170,40 @@ void publishPlan(geometry_msgs::Pose target_pose){
   
 }
 
-geometry_msgs::Pose offsetGoal(geometry_msgs::Pose goal_pose){
-	geometry_msgs::Pose ogp = goal_pose;
-	
-	ogp.position.x += block_grasp_offset_.x;
-	ogp.position.y += block_grasp_offset_.y;
-	ogp.position.z += block_grasp_offset_.z;
-	
-	graspQuat(&(ogp.orientation));
-
-	return ogp;
-
-}
 
 int FSM(int state){
 	int next_state = state;
 	geometry_msgs::Pose current_pose = move_group_interface->getCurrentPose().pose;
 	geometry_msgs::Pose goal_pose;
+	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	
 	switch (state){
 	
 		case START:
 		{
+			//ROS_WARN("The FSM should not be able to be called with state START, something is off");
+			grip_msg.open_gripper = true;
+			gripper_pub.publish(grip_msg);
+			ros::Duration(1.0).sleep();
+			
+			next_state = REACH;
+		}
+		case REACH:
+		{
 			// retrieve closest obj
+			grip_msg.open_gripper = false;
+			gripper_pub.publish(grip_msg);
+			
 			sofar_hbc_01::Block2Pick b2p;
 			b2p.request.arm = ARM;
 			b2p.request.eef_pose = current_pose;
 			
-			client_b2p.call(b2p);
+			if (!client_b2p.call(b2p)){
+			// if call returns false means no obj was retrieved
+			// the table is shy of blue blocks
+				next_state = END;
+				break;
+			}
 			
 			block = std::make_shared<Block>(b2p.response.block_name, b2p.response.block_color);
 			block->setPose(b2p.response.block_pose);
@@ -171,16 +212,22 @@ int FSM(int state){
 			
 			publishPlan(goal_pose); // plan and publish it
 			
-			next_state = REACH;
+			next_state = PICK;
 			break;
 		}
-		case REACH:
+		case PICK:
 		{
+			// open the grippers, go down towards the obj
+			// NOTE: 	we assume here that the grippers have enough time to open before
+			// 				the obj is reached, might have to add a delay here
 			// reach obj pose + offset
 			//std::vector<double> current_orientation = move_group_interface->getCurrentRPY();
 			//current_orientation[1] = 0;	// set eef perpendicular to the table (P = 0)
+			grip_msg.open_gripper = true;
+			gripper_pub.publish(grip_msg);
+			
 			if (block == NULL){
-				ROS_ERROR("Status 'REACH' with no block grasped");
+				ROS_ERROR("Status 'PICK' with no block grasped");
 				next_state = START;
 				break;
 			}
@@ -191,35 +238,63 @@ int FSM(int state){
 			
 			publishPlan(goal_pose); // plan and publish it
 			
-			next_state = PICK;
+			next_state = RAISE;
 			break;
 		}
-		case PICK:
-		{
-			// go down towards the obj
-			// close the grippers
-			next_state = RAISE;
-		}
+		
 		case RAISE:
 		{
 			// raise the eef up of few cm
 			// next_state = obj.isBlue() ? PLACE_BLUE : REMOVE_RED
+			if (block == NULL){
+				ROS_ERROR("Status 'RAISE' with no block grasped");
+				next_state = START;
+				break;
+			}
+			grip_msg.open_gripper = false;	//< here as well, we assume they have time to close
+			gripper_pub.publish(grip_msg);
+			
+			goal_pose = offsetGoal(current_pose);	// go back up a bit
+			
+			publishPlan(goal_pose); // plan and publish it
+			
+			next_state = block->isBlue() ? PLACE_BLUE : REMOVE_RED;
+			
 			break;
 		}
 		case PLACE_BLUE:
 		{
 			// retrieve BlueBox pose
 			// reach blue box + offset
-			// release grippers
-			next_state = START;
+			// release grippers <- done in START
+			
+			goal_pose = offsetGoal(BLOCK_DEST_);	// go back up a bit
+			
+			publishPlan(goal_pose); // plan and publish it
+			
+			next_state = START;	//< the gripper will open in START
 			break;
 		}
 		case REMOVE_RED:
 		{
 			// retrieve empty position
 			// reach the position + offset
-			// release grippers
-			next_state = START;
+			
+			sofar_hbc_01::ClosestEmptySpace ces;
+			ces.request.arm = ARM;
+			ces.request.eef_pose = current_pose;
+			
+			if(!client_ces.call(ces)){
+				ROS_ERROR("No empty pose was found near the picked block");
+				ros::shutdown();
+				// for now simply implode
+			}
+			
+			goal_pose = offsetGoal(ces.response.empty_pose);
+			
+			publishPlan(goal_pose); // plan and publish it
+			
+			next_state = START; //< the gripper will open in START
 			break;
 		}
 		case END:
@@ -245,6 +320,12 @@ void resCllbck (const human_baxter_collaboration::BaxterResultTrajectory::ConstP
 	if (msg->success){
 		state_ = next_state_;	// the previous step has been successful, update the current state.
 	}
+	// notice here that if a collision is detected (or, far any other reason, a plan fails)
+	// replanning happens immediately, which is a waste of comp. power in case of slowly evolving
+	// scenarios (whereas a service informing this node of the disappearance of the possible collision
+	// that re-initiate the process might be preferred).
+	// As a possible patch, we could try and wait for a couple seconds before replanning.
+	
 	// if the update does not occour we're replanning for the same goal, but with the current
 	// initial state.
 	next_state_ = FSM(state_);
@@ -288,6 +369,8 @@ int main(int argc, char** argv)
   
 	// publisher which pubs the trajectories w/ the info about the arm already in
   traj_pub = node_handle.advertise<human_baxter_collaboration::BaxterTrajectory>("/baxter_moveit_trajectory", 1000);
+  gripper_pub = node_handle.advertise<human_baxter_collaboration::BaxterGripperOpen>(std::string("/robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000);
+  
   
   /*
   while(ros::ok()){
