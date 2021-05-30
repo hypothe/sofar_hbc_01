@@ -138,6 +138,7 @@ target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(closest_block src/closest_block.cpp)
+add_executable(finite_state_machine src/finite_state_machine.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -151,12 +152,22 @@ add_executable(closest_block src/closest_block.cpp)
 add_dependencies(closest_block
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
+add_dependencies(finite_state_machine
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(closest_block
   ${PROJECT_NAME}
 )
 target_link_libraries(closest_block
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(finite_state_machine
+  ${PROJECT_NAME}
+)
+target_link_libraries(finite_state_machine
   ${catkin_LIBRARIES}
 )
 

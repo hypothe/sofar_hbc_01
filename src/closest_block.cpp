@@ -52,6 +52,7 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 	for (auto block_pose : bp.response.blocks_poses){
 
 		block_name = block_pose.header.frame_id;
+		if (!blocks_.count(block_name)) continue; // no element with such name found
 		
 		// block = std::make_shared<Block>(blocks_[block_name]);
 		block = blocks_[block_name];
@@ -130,10 +131,12 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 		block = blocks_[closest_block_name];
 	}
 	else if (!closest_block_name.empty()){
-		// if there was at least an unobstructed blue block
+		// if there wasn't at least an unobstructed blue block
+		// but at least an obstructed one
 		block = blocks_[obst_closest_block_name];
 	}
 	else{
+		// Notice the call returns false if no blue block can be picked
 		block = std::make_shared<Block>(std::string("END"), std::string("END"));
 		return false;
 	}

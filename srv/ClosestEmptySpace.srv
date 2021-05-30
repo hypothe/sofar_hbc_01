@@ -1,0 +1,8 @@
+# position of an empty spot on the table
+
+string arm
+geometry_msgs/Pose eef_pose
+
+---
+
+geometry_msgs/Pose empty_pose
