@@ -20,6 +20,7 @@
 #include "human_baxter_collaboration/BaxterTrajectory.h"
 #include "human_baxter_collaboration/BaxterStopTrajectory.h"
 #include "human_baxter_collaboration/BaxterResultTrajectory.h"
+#include "sofar_hbc_01/utils.h"
 #include "sofar_hbc_01/Block.h"
 #include "sofar_hbc_01/Block2Pick.h"
 #include "sofar_hbc_01/ClosestEmptySpace.h"
@@ -110,22 +111,6 @@ void addTableObst(){
   // (using a vector that could contain additional objects)
   ROS_INFO("Table added into the world");
   planning_scene_interface->applyCollisionObjects(collision_objects);
-}
-
-void waitForServices (std::vector<std::shared_ptr<ros::ServiceClient> > clients){
-	bool ready=false;
-	
-	while(!ready){
-		ready = true;
-		for(auto client : clients){
-			if (!client->exists()){
-				ROS_WARN("Service %s not found.", client->getService().c_str());
-				client->waitForExistence(ros::Duration(1));
-				ready = false;
-			}
-		}
-	}
-	return;
 }
 
 void publishPlan(geometry_msgs::Pose target_pose){

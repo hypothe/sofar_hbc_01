@@ -9,6 +9,7 @@
 #include "sofar_hbc_01/Block2Pick.h"
 #include "sofar_hbc_01/BlocksPoses.h"
 #include "sofar_hbc_01/Block.h"
+#include "sofar_hbc_01/utils.h"
 
 ros::ServiceClient client_blocks_tf;
 
@@ -175,10 +176,15 @@ int main(int argc, char** argv)
 	
 	// client that retrieves the current blocks tf
   client_blocks_tf = node_handle.serviceClient<sofar_hbc_01::BlocksPoses>("/tf/blocks");
-  while(!client_blocks_tf.exists()){
+  /*while(!client_blocks_tf.exists()){
   	ROS_WARN("Service %s not found.", client_blocks_tf.getService().c_str());
 	  client_blocks_tf.waitForExistence(ros::Duration(2));
-  }
+  }*/
+  
+  std::vector<std::shared_ptr<ros::ServiceClient> > vec_client;
+  vec_client.push_back(std::make_shared<ros::ServiceClient>(client_blocks_tf));
+  
+  waitForServices(vec_client);
   // service that gets one EEF pose and returns the pose of the block closest to it
 	ros::ServiceServer service_closest_block = node_handle.advertiseService("/block_to_pick", blockCllbck);
 	
