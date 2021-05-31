@@ -1,7 +1,12 @@
 <?xml version="1.0"?>
 <launch>
+
+    <node name="tf_server" pkg="sofar_hbc_01" type="tf_server" args="--wait"/> 
+
     <rosparam file="$(find sofar_hbc_01)/config/blocks_param.yaml" command="load"/>
     <node name="closest_block" pkg="sofar_hbc_01" type="closest_block" output="screen" args="--wait" />
+    
+    <node name="empty_pos_server" pkg="sofar_hbc_01" type="empty_pos_server" output="screen" args="--wait" />
     
     <node name="finite_state_machine_left" pkg="sofar_hbc_01" type="finite_state_machine" args="--wait" output="screen" respawn="false" >
     <param name="~arm" value="left"/>	
@@ -10,5 +15,5 @@
     <param name="~arm" value="right"/>	
     </node>
     
-    <include file="$(find human_baxter_collaboration)/launch/human_baxter_collaboration.launch" />
+    <!--include file="$(find human_baxter_collaboration)/launch/human_baxter_collaboration.launch" /-->
 </launch>

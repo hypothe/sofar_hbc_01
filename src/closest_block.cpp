@@ -11,6 +11,8 @@
 #include "sofar_hbc_01/Block.h"
 #include "sofar_hbc_01/utils.h"
 
+double pickThreshold = 0.05;
+
 ros::ServiceClient client_blocks_tf;
 
 float table_height = -1;
@@ -63,8 +65,8 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 		// do not consider already placed blocks;
 		if (placed[block_name]){	continue;	}
 		// do not consider blocks in the unreachable half-table for this arm
-		if (	(req.arm == "right" && block_pose.pose.position.y > 0) ||
-					(req.arm == "left" && block_pose.pose.position.y < 0)		){	continue;	}
+		if (	(req.arm == "right" && block_pose.pose.position.y > 0 + pickThreshold) ||
+					(req.arm == "left" && block_pose.pose.position.y < 0 - pickThreshold)		){	continue;	}
 					
 		block->setPose(block_pose.pose);
 		block->setObstruction("");

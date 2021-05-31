@@ -41,6 +41,7 @@ enum states_ {START, REACH, PICK, RAISE, PLACE_BLUE, REMOVE_RED, END};
 int state_ = START;
 int next_state_ = REACH;
 geometry_msgs::Pose BLOCK_DEST_;
+std::map<std::string, bool> placed_;
 
 geometry_msgs::Pose goal_pose_;
 geometry_msgs::Point block_grasp_offset_;
@@ -91,6 +92,11 @@ void loadParam(){
   }
   if(!ros::param::get(std::string("block_dest_"+ARM), tmp_dest)){
   	ROS_ERROR("No parameter called 'block_dest_%s' found.", ARM.c_str());
+  	ros::shutdown();
+  	return;
+  }
+  if(!ros::param::get(std::string("block_placed"), placed_)){
+  	ROS_ERROR("No parameter called 'block_placed' found.");
   	ros::shutdown();
   	return;
   }
@@ -170,6 +176,15 @@ void publishPlan(geometry_msgs::Pose target_pose){
   
 }
 
+bool setBlockPlaced(){
+	if (!placed_.count(block->getName())){
+		ROS_WARN("Trying to place non-existing block: what's going on?");
+		return false;
+	}
+	placed_[block->getName()] = true;
+	ros::param::set("block_placed", placed_);
+	return true;
+}
 
 int FSM(int state){
 	int next_state = state;
@@ -181,6 +196,8 @@ int FSM(int state){
 	
 		case START:
 		{
+		
+  		ROS_INFO("BAXTER_FSM_%s: START", ARM.c_str());
 			//ROS_WARN("The FSM should not be able to be called with state START, something is off");
 			grip_msg.open_gripper = true;
 			gripper_pub.publish(grip_msg);
@@ -191,6 +208,7 @@ int FSM(int state){
 		case REACH:
 		{
 			// retrieve closest obj
+  		ROS_INFO("BAXTER_FSM_%s: REACH", ARM.c_str());
 			grip_msg.open_gripper = false;
 			gripper_pub.publish(grip_msg);
 			
@@ -201,12 +219,15 @@ int FSM(int state){
 			if (!client_b2p.call(b2p)){
 			// if call returns false means no obj was retrieved
 			// the table is shy of blue blocks
+  			ROS_INFO("BAXTER_FSM_%s: ALL BLOCKS GRASPED", ARM.c_str());
 				next_state = END;
 				break;
 			}
 			
 			block = std::make_shared<Block>(b2p.response.block_name, b2p.response.block_color);
 			block->setPose(b2p.response.block_pose);
+			
+  		ROS_INFO("\t BLOCK FOUND: %s", block->getName().c_str());
 			
 			goal_pose = offsetGoal(block->getPose());
 			
@@ -223,6 +244,7 @@ int FSM(int state){
 			// reach obj pose + offset
 			//std::vector<double> current_orientation = move_group_interface->getCurrentRPY();
 			//current_orientation[1] = 0;	// set eef perpendicular to the table (P = 0)
+			
 			grip_msg.open_gripper = true;
 			gripper_pub.publish(grip_msg);
 			
@@ -239,6 +261,8 @@ int FSM(int state){
 			publishPlan(goal_pose); // plan and publish it
 			
 			next_state = RAISE;
+			
+  		ROS_INFO("BAXTER_FSM_%s: PICK", ARM.c_str());
 			break;
 		}
 		
@@ -260,6 +284,7 @@ int FSM(int state){
 			
 			next_state = block->isBlue() ? PLACE_BLUE : REMOVE_RED;
 			
+  		ROS_INFO("BAXTER_FSM_%s: RAISE", ARM.c_str());
 			break;
 		}
 		case PLACE_BLUE:
@@ -273,6 +298,15 @@ int FSM(int state){
 			publishPlan(goal_pose); // plan and publish it
 			
 			next_state = START;	//< the gripper will open in START
+			
+			if (!setBlockPlaced()){
+				next_state = START;
+				break;
+			}
+			
+  		ROS_INFO("BAXTER_FSM_%s: PLACE_BLUE", ARM.c_str());
+  		ROS_INFO("\t BLOCK PLACED: %s", block->getName().c_str());
+			
 			break;
 		}
 		case REMOVE_RED:
@@ -295,12 +329,14 @@ int FSM(int state){
 			publishPlan(goal_pose); // plan and publish it
 			
 			next_state = START; //< the gripper will open in START
+			
 			break;
 		}
 		case END:
 		{
 			// Do nothing for now
 			// Should it (indirectly) terminate the node?
+  		ROS_INFO("BAXTER_FSM_%s: END", ARM.c_str());
 			break;
 		}
 	}
@@ -371,7 +407,7 @@ int main(int argc, char** argv)
   traj_pub = node_handle.advertise<human_baxter_collaboration::BaxterTrajectory>("/baxter_moveit_trajectory", 1000);
   gripper_pub = node_handle.advertise<human_baxter_collaboration::BaxterGripperOpen>(std::string("/robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000);
   
-  
+  ROS_INFO("BAXTER_FSM_%s: STARTED", ARM.c_str());
   /*
   while(ros::ok()){
 		state = FSM(state);

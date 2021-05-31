@@ -6,8 +6,8 @@ blocks_dim: 0.05
 table_pos:  [0.7673182, 0.0, 0.4]
 table_dim:  [0.6, 2.0, 0.8]
 
-MiddlePlacementN: [0.74, 0.0, 0.825]
-Bluebox:          [0.668, 0.608, 0.801]
+#MiddlePlacementN: [0.74, 0.0, 0.825]
+#Bluebox:          [0.668, 0.608, 0.801]
 
-block_dest_left:  Bluebox
-block_dest_right: MiddlePlacementN
+block_dest_left:  [0.668, 0.608, 0.801] #Bluebox
+block_dest_right: [0.74, 0.0, 0.825]    #MiddlePlacementN
