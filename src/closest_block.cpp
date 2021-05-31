@@ -40,7 +40,7 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 	std::vector<std::shared_ptr<Block> > v_blue, v_red;
 	std::map<std::string, bool> placed;
 	
-	if(!ros::param::get("block_placed", placed)){	ROS_ERROR("No parameter named 'block_placed' found");	}
+	if(!ros::param::get(std::string("block_placed_"+req.arm), placed)){	ROS_ERROR("No parameter named 'block_placed' found");	}
 	
 	sofar_hbc_01::BlocksPoses bp;
 	client_blocks_tf.call(bp);
@@ -85,10 +85,13 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 						dist2(blue_block->getPose(), red_block->getPose()) < block_size){
 						
 						blue_block->setObstruction(red_block->getName());
+						
 				}
 			}
 		}
 	}
+	
+
 	
 	// compute distance for unobstructed blue blocks
 	double min_dist = 5000.0; // 5 kilometers, pretty far away
@@ -106,11 +109,19 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 		// Note also the check on x distance, just to be sure the block is on the table.
 		//	Dirty, but should work.
 		middlePlaced = (req.arm == "left" && 
-										abs(blue_block->getPose().position.y - table_pos[1]) <= block_size &&
+										abs(blue_block->getPose().position.y - table_pos[1]) <= pickThreshold &&
 										abs(blue_block->getPose().position.x - table_pos[0]) < table_dim[0]/2
 										);
+		if (middlePlaced){
+			ROS_INFO("Block %s in the MIDDLE", blue_block->getName().c_str());
+		}
 		
 		dist = dist3(eef_pose, blue_block->getPose());
+		/*ROS_INFO("Block %s obstructed by %s (%d) dist: %lf", 	blue_block->getName().c_str(), 
+																													blue_block->getObstructedBy().c_str(),
+																													blue_block->getObstructedBy().empty(),
+																													dist
+																													);*/
 		// 
 		if (blue_block->getObstructedBy().empty() && (dist < min_dist || middlePlaced))
 		{
@@ -133,7 +144,7 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 		// if there was at least an unobstructed blue block
 		block = blocks_[closest_block_name];
 	}
-	else if (!closest_block_name.empty()){
+	else if (!obst_closest_block_name.empty()){
 		// if there wasn't at least an unobstructed blue block
 		// but at least an obstructed one
 		block = blocks_[obst_closest_block_name];
