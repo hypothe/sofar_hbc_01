@@ -54,7 +54,7 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-add_message_files(DIRECTORY msg)
+#add_message_files(DIRECTORY msg)
 
 ## Generate services in the 'srv' folder
 add_service_files(DIRECTORY srv)
@@ -140,6 +140,7 @@ target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(closest_block src/closest_block.cpp)
 add_executable(finite_state_machine src/finite_state_machine.cpp)
+add_executable(tf_server src/tf_server.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -156,6 +157,9 @@ add_dependencies(closest_block
 add_dependencies(finite_state_machine
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
+add_dependencies(tf_server
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(closest_block
@@ -169,6 +173,13 @@ target_link_libraries(finite_state_machine
   ${PROJECT_NAME}
 )
 target_link_libraries(finite_state_machine
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(tf_server
+  ${PROJECT_NAME}
+)
+target_link_libraries(tf_server
   ${catkin_LIBRARIES}
 )
 
