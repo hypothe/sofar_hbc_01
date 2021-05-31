@@ -1,4 +1,12 @@
-/* Author: Georgii A. Kurshakov */
+/**
+ * @file tf_server.cpp
+ * @author Georgii A. Kurshakov (kurshakov98@gmail.com)
+ * @brief A node reading data from /tf, /unity_tf and transferring the data to /tf/baxter, /tf/human topics and /tf/blocks service.
+ * @date 2021-05-31
+ * 
+ * @copyright Copyright (c) 2021
+ * 
+ */
 
 #include "ros/ros.h"
 #include "tf2_msgs/TFMessage.h"
@@ -15,9 +23,16 @@ ros::Publisher baxter_pub;
 
 std::vector<geometry_msgs::PoseStamped> block_frames;
 
+/**
+ *  \brief Check if the current frame is a block (scene object).
+ *  
+ *  \param frame_id Object frame ID.
+ *  \return True if the object is a block (scene object), otherwise False.
+ *  
+ */
 bool isBlock(std::string frame_id)
 {
-    if (frame_id.length() == 1) //if child_frame_id is a char
+    if (frame_id.length() == 1) //if frame_id is a single character
         return true;
     if (frame_id == "Bluebox")
         return true;
@@ -27,15 +42,29 @@ bool isBlock(std::string frame_id)
         return true;
     if (frame_id == "MiddlePlacementN")
         return true;
-    return false;   //if frame_id is not "world"
+    return false;
 }
 
+/**
+ *  \brief /tf/blocks service callback.
+ *  
+ *  \param req Service request (empty signal).
+ *  \param res Service responce (vector of frames).
+ *  \return True
+ *  
+ */
 bool blocks_callback(sofar_hbc_01::BlocksPoses::Request &req, sofar_hbc_01::BlocksPoses::Response &res)
 {
     res.blocks_poses = block_frames;
     return true;
 }
 
+/**
+ *  \brief /tf topic callback, transferring all the data directly to /tf/baxter topic.
+ *  
+ *  \param msg_in Topic message.
+ *  
+ */
 void tf_callback(const tf2_msgs::TFMessage::ConstPtr& msg_in)
 {
     std::vector<geometry_msgs::TransformStamped> frames = msg_in->transforms;
@@ -51,12 +80,19 @@ void tf_callback(const tf2_msgs::TFMessage::ConstPtr& msg_in)
     baxter_pub.publish(msg_out);
 }
 
+/**
+ *  \brief /unity_tf topic callback, sorting human and scene data.
+ *  
+ *  \param msg_in Topic message.
+ *  
+ *  Scene objects data is being stored awaiting /tf/blocks service request. Human data is being transferred directly to /tf/human topic.
+ */
 void unity_callback(const human_baxter_collaboration::UnityTf::ConstPtr& msg_in)
 {
     std::vector<geometry_msgs::PoseStamped> frames = msg_in->frames;
     std::vector<geometry_msgs::PoseStamped> human_frames;
     
-    block_frames.clear();
+    block_frames.clear(); //the blocks vector is being cleared before writing new values
     
     for (auto frame : frames)
     {
