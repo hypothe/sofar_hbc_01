@@ -219,7 +219,7 @@ void publishCartesian(geometry_msgs::Pose current_pose, geometry_msgs::Pose targ
   human_baxter_collaboration::BaxterTrajectory bxtr_traj;
   moveit_msgs::RobotTrajectory trajectory;
   std::vector<geometry_msgs::Pose> waypoints;
-  double eef_step = 0.5, jump_threshold = 0.0;
+  double eef_step = 0.2, jump_threshold = 0.0;
   
 	waypoints.push_back(current_pose);
 	waypoints.push_back(target_pose);
@@ -262,6 +262,7 @@ int FSM(int state){
 			//ROS_WARN("The FSM should not be able to be called with state START, something is off");
 			grip_msg.open_gripper = true;
 			gripper_pub.publish(grip_msg);
+			ros::Duration(1.0).sleep();
 			
 			next_state = REACH;
 		}
