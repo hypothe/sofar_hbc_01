@@ -24,23 +24,15 @@ ros::Publisher baxter_pub;
 std::vector<geometry_msgs::PoseStamped> block_frames;
 
 /**
- *  \brief Check if the current frame is a block (scene object).
+ *  \brief Check if the current frame is a block.
  *  
  *  \param frame_id Object frame ID.
- *  \return True if the object is a block (scene object), otherwise False.
+ *  \return True if the object is a block, otherwise False.
  *  
  */
 bool isBlock(std::string frame_id)
 {
     if (frame_id.length() == 1) //if frame_id is a single character
-        return true;
-    if (frame_id == "Bluebox")
-        return true;
-    if (frame_id == "Redbox")
-        return true;
-    if (frame_id == "MiddlePlacement")
-        return true;
-    if (frame_id == "MiddlePlacementN")
         return true;
     return false;
 }
@@ -85,7 +77,7 @@ void tf_callback(const tf2_msgs::TFMessage::ConstPtr& msg_in)
  *  
  *  \param msg_in Topic message.
  *  
- *  Scene objects data is being stored awaiting /tf/blocks service request. Human data is being transferred directly to /tf/human topic.
+ *  Blocks data is being stored awaiting /tf/blocks service request. Human data is being transferred directly to /tf/human topic.
  */
 void unity_callback(const human_baxter_collaboration::UnityTf::ConstPtr& msg_in)
 {
