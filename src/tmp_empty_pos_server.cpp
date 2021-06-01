@@ -23,7 +23,7 @@ bool posCllbck(sofar_hbc_01::ClosestEmptySpace::Request &req, sofar_hbc_01::Clos
 		ang = 90.0 + ang * M_PI / 180.0;
 	}
 	else{
-		ang = (270.0 + ang) * M_PI / 180.0;
+		ang = (180.0 + ang) * M_PI / 180.0;
 	}
 	res.empty_pose = req.eef_pose;
 	res.empty_pose.position.x += dist*cos(ang);

@@ -254,7 +254,7 @@ int FSM(int state){
 		{
 			// addTableObst(0.1);
 			// retrieve closest obj
-			addBoxObst("table", table_pos, table_dim);
+			// addBoxObst("table", table_pos, table_dim);
   		ROS_INFO("BAXTER_FSM_%s: REACH", ARM.c_str());
 			grip_msg.open_gripper = false;
 			gripper_pub.publish(grip_msg);
@@ -336,7 +336,7 @@ int FSM(int state){
 			
 			next_state = publishCartesian(current_pose, goal_pose) ? (block->isBlue() ? PLACE_BLUE : REMOVE_RED) : ERR;
 			
-  		addBoxObst("table", table_pos, table_dim, table_extra);
+  		// addBoxObst("table", table_pos, table_dim, table_extra);
 			break;
 		}
 		case PLACE_BLUE:
