@@ -27,14 +27,22 @@ std::vector<geometry_msgs::PoseStamped> block_frames;
  *  \brief Check if the current frame is a block.
  *  
  *  \param frame_id Object frame ID.
- *  \return True if the object is a block, otherwise False.
+ *  \return 1 if the object is a block, 2 if the object is a scene object (must be discarded), 0 if the object is a human link.
  *  
  */
-bool isBlock(std::string frame_id)
+int isBlock(std::string frame_id)
 {
     if (frame_id.length() == 1) //if frame_id is a single character
-        return true;
-    return false;
+        return 1;
+    if (frame_id == "Bluebox")
+        return 2;
+    if (frame_id == "Redbox")
+        return 2;
+    if (frame_id == "MiddlePlacement")
+        return 2;
+    if (frame_id == "MiddlePlacementN")
+        return 2;
+    return 0;
 }
 
 /**
@@ -88,11 +96,11 @@ void unity_callback(const human_baxter_collaboration::UnityTf::ConstPtr& msg_in)
     
     for (auto frame : frames)
     {
-        if (isBlock(frame.header.frame_id))
+        if (isBlock(frame.header.frame_id) == 1)
         {
             block_frames.push_back(frame);
         }
-        else
+        else if (isBlock(frame.header.frame_id) == 0)
         {
             human_frames.push_back(frame);
         }
