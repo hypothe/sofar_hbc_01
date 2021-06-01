@@ -39,8 +39,15 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 	// retrieve current end effector pose
 	std::vector<std::shared_ptr<Block> > v_blue, v_red;
 	std::map<std::string, bool> placed;
+	std::map<std::string, bool> grasped;
+	std::vector<double> block_dest;
+	geometry_msgs::Pose block_dest_pose;
 	
-	if(!ros::param::get(std::string("block_placed_"+req.arm), placed)){	ROS_ERROR("No parameter named 'block_placed' found");	}
+	/*if(!ros::param::get(std::string("block_placed_"+req.arm), placed)){	ROS_ERROR("No parameter named 'block_placed' found");	}*/
+	
+	if(!ros::param::get(std::string("block_grasped"), grasped)){	ROS_ERROR("No parameter named 'block_grasped' found");	}
+	if(!ros::param::get(std::string("block_dest_"+req.arm), block_dest)){	ROS_ERROR("No parameter named 'block_dest_%s' found", req.arm.c_str());	}
+	block_dest_pose.position.x = block_dest[0];	block_dest_pose.position.y = block_dest[1];	block_dest_pose.position.z = block_dest[2];
 	
 	sofar_hbc_01::BlocksPoses bp;
 	client_blocks_tf.call(bp);
@@ -60,21 +67,28 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 		// block = std::make_shared<Block>(blocks_[block_name]);
 		block = blocks_[block_name];
 		
-		block->setPlaced(placed[block_name]);
+		/* block->setPlaced(placed[block_name]); */
 		
 		// do not consider already placed blocks;
-		if (placed[block_name]){	continue;	}
+		if (placed[block_name] || grasped[block_name]){	continue;	}
 		// do not consider blocks in the unreachable half-table for this arm
 		if (	(req.arm == "right" && block_pose.pose.position.y > 0 + pickThreshold) ||
 					(req.arm == "left" && block_pose.pose.position.y < 0 - pickThreshold)		){	continue;	}
 					
 		block->setPose(block_pose.pose);
 		block->setObstruction("");
+		// Dynamic placement check
+		if (dist2(block->getPose(), block_dest_pose) <= 2*pickThreshold){
+			placed[block->getName()] = true;
+			continue; // skip if it's already placed
+		}
 		
 		
 		if (block->isBlue())	{ v_blue.push_back(block);	}
 		else									{ v_red.push_back(block);	}
 	}
+	// Update the placement status
+	ros::param::set(std::string("block_placed_"+req.arm), placed);
 	
 	// check for obstruction
 	for (auto red_block : v_red){

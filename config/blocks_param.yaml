@@ -1,6 +1,8 @@
 blocks_colors:  {A: "r", B: "r", C: "b", D: "r", E: "b", F: "r", G: "b", H: "r", I: "b", L: "r", M: "b"}
-block_placed_left:   {A: false, B: false, C: false, D: false, E: false, F: false, G: false, H: false, I: false, L: false, M: false}
-block_placed_right:   {A: false, B: false, C: false, D: false, E: false, F: false, G: false, H: false, I: false, L: false, M: false}
+#block_placed_left:   {A: false, B: false, C: false, D: false, E: false, F: false, G: false, H: false, I: false, L: false, M: false}
+#block_placed_right:   {A: false, B: false, C: false, D: false, E: false, F: false, G: false, H: false, I: false, L: false, M: false}
+
+block_grasped:   {A: false, B: false, C: false, D: false, E: false, F: false, G: false, H: false, I: false, L: false, M: false}
 
 blocks_dim: 0.05
 
