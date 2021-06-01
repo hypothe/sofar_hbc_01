@@ -44,7 +44,7 @@ int state_ = START;
 int next_state_ = REACH;
 geometry_msgs::Pose BLOCK_DEST_;
 std::map<std::string, bool> placed_;
-std::vector<double> table_pos, table_dim;
+std::vector<double> table_pos, table_dim, table_extra = {0.0, 0.0, 0.1};
 
 bool baxter_at_rest_;
 geometry_msgs::Pose baxter_rest_pose_;
@@ -172,7 +172,7 @@ bool publishPlan(geometry_msgs::Pose target_pose){
   // Note that we are just planning, not asking move_group_interface
   // to actually move the robot.
   moveit::planning_interface::MoveGroupInterface::Plan my_plan;
-
+  
   bool success = false;
   
   while (!success && attempt < max_attempts){
@@ -254,6 +254,7 @@ int FSM(int state){
 		{
 			// addTableObst(0.1);
 			// retrieve closest obj
+			addBoxObst("table", table_pos, table_dim);
   		ROS_INFO("BAXTER_FSM_%s: REACH", ARM.c_str());
 			grip_msg.open_gripper = false;
 			gripper_pub.publish(grip_msg);
@@ -335,6 +336,7 @@ int FSM(int state){
 			
 			next_state = publishCartesian(current_pose, goal_pose) ? (block->isBlue() ? PLACE_BLUE : REMOVE_RED) : ERR;
 			
+  		addBoxObst("table", table_pos, table_dim, table_extra);
 			break;
 		}
 		case PLACE_BLUE:
@@ -346,6 +348,7 @@ int FSM(int state){
 			// for the moment simply stack the blue blocks on the same spot
 			//
 			//addTableObst(0.1);
+			
 			if (block == NULL){
 				ROS_ERROR("Status 'PLACE_BLUE' with no block grasped");
 				next_state = ERR;
