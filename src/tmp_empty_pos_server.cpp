@@ -13,18 +13,21 @@
 #include "sofar_hbc_01/utils.h"
 
 const double max_dist = 0.1;
+const double min_dist = 0.05;
 
 bool posCllbck(sofar_hbc_01::ClosestEmptySpace::Request &req, sofar_hbc_01::ClosestEmptySpace::Response &res){
-	double ang;
+	double ang = double(rand())/double(RAND_MAX) * 90.0;
+	double dist = double(rand())/double(RAND_MAX) * (max_dist - min_dist) + min_dist;
+	
 	if (req.arm == "left"){
-		ang = rand()%180 * M_PI / 180;
+		ang = 90.0 + ang * M_PI / 180.0;
 	}
 	else{
-		ang = (180+rand()%180) * M_PI / 180;
+		ang = (270.0 + ang) * M_PI / 180.0;
 	}
 	res.empty_pose = req.eef_pose;
-	res.empty_pose.position.x += max_dist*cos(ang);
-	res.empty_pose.position.y += max_dist*sin(ang);
+	res.empty_pose.position.x += dist*cos(ang);
+	res.empty_pose.position.y += dist*sin(ang);
   
   return true;
 }

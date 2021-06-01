@@ -142,6 +142,7 @@ add_executable(closest_block src/closest_block.cpp)
 add_executable(finite_state_machine src/finite_state_machine.cpp)
 add_executable(tf_server src/tf_server.cpp)
 add_executable(empty_pos_server src/tmp_empty_pos_server.cpp)
+add_executable(start_baxter_routine src/start_baxter_routine.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -162,6 +163,10 @@ add_dependencies(tf_server
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
 add_dependencies(empty_pos_server
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
+
+add_dependencies(start_baxter_routine
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
 
@@ -191,6 +196,13 @@ target_link_libraries(empty_pos_server
   ${PROJECT_NAME}
 )
 target_link_libraries(empty_pos_server
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(start_baxter_routine
+  ${PROJECT_NAME}
+)
+target_link_libraries(start_baxter_routine
   ${catkin_LIBRARIES}
 )
 

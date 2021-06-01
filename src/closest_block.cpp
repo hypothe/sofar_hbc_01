@@ -37,7 +37,7 @@ double dist3(geometry_msgs::Pose pose1, geometry_msgs::Pose pose2){
 bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pick::Response &res){
 
 	// retrieve current end effector pose
-	std::vector<std::shared_ptr<Block> > v_blue, v_red;
+	std::vector<std::shared_ptr<Block> > v_blue, v_red, v_all;
 	std::map<std::string, bool> placed;
 	std::map<std::string, bool> grasped;
 	std::vector<double> block_dest;
@@ -83,7 +83,7 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 			continue; // skip if it's already placed
 		}
 		
-		
+		v_all.push_back(block);
 		if (block->isBlue())	{ v_blue.push_back(block);	}
 		else									{ v_red.push_back(block);	}
 	}
@@ -91,21 +91,18 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 	ros::param::set(std::string("block_placed_"+req.arm), placed);
 	
 	// check for obstruction
-	for (auto red_block : v_red){
-		if (red_block->getPose().position.z > table_height + block_size){
+	for (auto o_block : v_all){
+		if (o_block->getPose().position.z > table_height + block_size){
 		
 			for (auto blue_block : v_blue){
-				if (red_block->getPose().position.z > blue_block->getPose().position.z && 
-						dist2(blue_block->getPose(), red_block->getPose()) < block_size){
+				if (o_block->getPose().position.z > blue_block->getPose().position.z && 
+						dist2(blue_block->getPose(), o_block->getPose()) < block_size){
 						
-						blue_block->setObstruction(red_block->getName());
-						
+						blue_block->setObstruction(o_block->getName());
 				}
 			}
 		}
 	}
-	
-
 	
 	// compute distance for unobstructed blue blocks
 	double min_dist = 5000.0; // 5 kilometers, pretty far away

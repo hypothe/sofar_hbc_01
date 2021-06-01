@@ -15,5 +15,8 @@
     <param name="~arm" value="right"/>	
     </node>
     
+    <node name="start_baxter_routine" pkg="sofar_hbc_01" type="start_baxter_routine" output="screen" args="--wait" />
+    
+    
     <!--include file="$(find human_baxter_collaboration)/launch/human_baxter_collaboration.launch" /-->
 </launch>
