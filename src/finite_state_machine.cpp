@@ -15,8 +15,6 @@
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 
-#include <moveit_msgs/DisplayRobotState.h>
-#include <moveit_msgs/DisplayTrajectory.h>
 
 #include <moveit_msgs/AttachedCollisionObject.h>
 #include <moveit_msgs/CollisionObject.h>
@@ -29,72 +27,39 @@
 #include "geometry_msgs/PoseStamped.h"
 #include "human_baxter_collaboration/BaxterGripperOpen.h"
 #include "human_baxter_collaboration/BaxterTrajectory.h"
-#include "human_baxter_collaboration/BaxterStopTrajectory.h"
+// #include "human_baxter_collaboration/BaxterStopTrajectory.h"
 #include "human_baxter_collaboration/BaxterResultTrajectory.h"
 #include "sofar_hbc_01/utils.h"
-#include "sofar_hbc_01/Block.h"
+#include "sofar_hbc_01/FSM.h"
 #include "sofar_hbc_01/Block2Pick.h"
 #include "sofar_hbc_01/ClosestEmptySpace.h"
 
-enum states_ {START, REACH, PICK, RAISE, PLACE_BLUE, REMOVE_RED, ERR, END};
-int BAXTER_ATTEMPTS_ = 0;
-int MAX_BAXTER_ATTEMPTS_ = 10;
-
-int state_ = START;
-int next_state_ = REACH;
-geometry_msgs::Pose BLOCK_DEST_;
+//geometry_msgs::Pose BLOCK_DEST_;
 std::map<std::string, bool> placed_;
 std::vector<double> table_pos, table_dim, table_extra = {0.0, 0.0, 0.1};
+std::vector<double> block_dest;
 
-bool baxter_at_rest_;
 geometry_msgs::Pose baxter_rest_pose_;
-geometry_msgs::Pose goal_pose_;
-geometry_msgs::Point block_grasp_offset_;
 
 // MoveIt operates on sets of joints called "planning groups" and stores them in an object called
 // the `JointModelGroup`. Throughout MoveIt the terms "planning group" and "joint model group"
 // are used interchangably.
 std::string ARM;
 std::string PLANNING_GROUP; // = ARM+"_arm";
-moveit::planning_interface::MoveGroupInterface *move_group_interface;	moveit::planning_interface::PlanningSceneInterface *planning_scene_interface;
+std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface;	std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface;
+std::shared_ptr<FSM> fsm_;
 
-ros::ServiceClient client_b2p, client_ces;
-ros::Publisher traj_pub;
-ros::Publisher gripper_pub;
-ros::Timer err_timer;
 
-std::shared_ptr<Block> block = NULL;
 /* ------------------------ */
-void graspQuat(geometry_msgs::Quaternion* orig_orientation){
-	orig_orientation->x = 0.0;
-	orig_orientation->y = 1.0;
-	orig_orientation->z = 0.0;
-	orig_orientation->w = 0.0;
-}
-
-geometry_msgs::Pose offsetGoal(geometry_msgs::Pose goal_pose){
-	geometry_msgs::Pose ogp = goal_pose;
-	
-	ogp.position.x += block_grasp_offset_.x;
-	ogp.position.y += block_grasp_offset_.y;
-	ogp.position.z += block_grasp_offset_.z;
-	
-	graspQuat(&(ogp.orientation));
-
-	return ogp;
-
-}
-
 
 void loadParam(){
-	std::vector<double> tmp_dest;
 	
   if(!ros::param::get("~arm", ARM)){
   	ROS_ERROR("No parameter called '~arm' found.");
   	ros::shutdown();
   	return;
   }
-  if(!ros::param::get(std::string("block_dest_"+ARM), tmp_dest)){
+  if(!ros::param::get(std::string("block_dest_"+ARM), block_dest)){
   	ROS_ERROR("No parameter called 'block_dest_%s' found.", ARM.c_str());
   	ros::shutdown();
   	return;
@@ -102,23 +67,15 @@ void loadParam(){
   
 	if(!ros::param::get("table_pos", table_pos)){	ROS_ERROR("No parameter named 'table_pos' found");	}
 	if(!ros::param::get("table_dim", table_dim)){	ROS_ERROR("No parameter named 'table_dim' found");	}
-
-  BLOCK_DEST_.position.x = tmp_dest[0]; BLOCK_DEST_.position.y = tmp_dest[1]; BLOCK_DEST_.position.z = tmp_dest[2];
-  BLOCK_DEST_ = offsetGoal(BLOCK_DEST_);
   
   PLANNING_GROUP = ARM+"_arm";
-  move_group_interface = new moveit::planning_interface::MoveGroupInterface(PLANNING_GROUP);
-	planning_scene_interface = new moveit::planning_interface::PlanningSceneInterface;
+  move_group_interface = std::make_shared<moveit::planning_interface::MoveGroupInterface>(PLANNING_GROUP);
+	planning_scene_interface = std::make_shared<moveit::planning_interface::PlanningSceneInterface>();
 	move_group_interface->setPlannerId("RRTConnectkConfigMechanical");
 	move_group_interface->setPlanningTime(2);
 	move_group_interface->setNumPlanningAttempts(4);
 	
   baxter_rest_pose_ = move_group_interface->getCurrentPose().pose;
-  baxter_at_rest_ = true;
-	
-	block_grasp_offset_.x = 0;
-	block_grasp_offset_.y = 0;
-	block_grasp_offset_.z = 0.15; // 15 cm upward offset
 	
 }
 
@@ -162,270 +119,6 @@ void addBoxObst(std::string obst_name,
   planning_scene_interface->applyCollisionObjects(collision_objects);
 }
 
-bool publishPlan(geometry_msgs::Pose target_pose){
-	move_group_interface->setPoseTarget(target_pose);
-  move_group_interface->setGoalTolerance(0.005);
-  int attempt = 0;
-  const int max_attempts = 10;
-
-  // Now, we call the planner to compute the plan and visualize it.
-  // Note that we are just planning, not asking move_group_interface
-  // to actually move the robot.
-  moveit::planning_interface::MoveGroupInterface::Plan my_plan;
-  
-  bool success = false;
-  
-  while (!success && attempt < max_attempts){
-  	success = (move_group_interface->plan(my_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
-  	ROS_INFO("Plan for pose goal %s %s", ARM.c_str(), success ? "" : "FAILED");
-  	ros::Duration(1.0).sleep();
-  	attempt++;
-  }
-	if (attempt >= max_attempts){
-		return false;
-	}
-	// move_group_interface->execute(my_plan);
-
-  
-  human_baxter_collaboration::BaxterTrajectory bxtr_traj;
-  bxtr_traj.arm = ARM;
-  bxtr_traj.trajectory.push_back(my_plan.trajectory_);
-  traj_pub.publish(bxtr_traj);	// publish the plan trajectory
-  return true;
-}
-bool publishCartesian(geometry_msgs::Pose current_pose, geometry_msgs::Pose target_pose){ //, bool up){
-  human_baxter_collaboration::BaxterTrajectory bxtr_traj;
-  moveit_msgs::RobotTrajectory trajectory;
-  std::vector<geometry_msgs::Pose> waypoints;
-  double eef_step = 0.15, jump_threshold = 0.0;
-  
-	waypoints.push_back(current_pose);
-	waypoints.push_back(target_pose);
-	double fraction = move_group_interface->computeCartesianPath(waypoints, eef_step, jump_threshold, trajectory);
-  
-  ROS_DEBUG("CARTESIAN FRACTION %lf", fraction);
-  
-  if (fraction < 0.9){
-  	return false;
-  }
-  
-  bxtr_traj.arm = ARM;
-  bxtr_traj.trajectory.push_back(trajectory);
-  traj_pub.publish(bxtr_traj);	// publish the plan trajectory
-  
-  return true;
-}
-
-void setBlockGrasped(std::string name, bool grasp){
-	std::map<std::string, bool> grasped;
-	
-	if(!ros::param::get("block_grasped", grasped)){
-		ROS_ERROR("No parameter called 'block_grasped' found.");
-	}
-	if (!grasped.count(name)){return;}
-	grasped[name] = grasp;
-	ros::param::set("block_grasped", grasped);
-	return;
-}
-
-int FSM(int state){
-	int next_state = state;
-	geometry_msgs::Pose current_pose = move_group_interface->getCurrentPose().pose;
-	geometry_msgs::Pose goal_pose;
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
-	int attempt = 0;
-	
-	switch (state){
-	
-		case START:
-		{
-			err_timer.stop();
-  		ROS_INFO("BAXTER_FSM_%s: START", ARM.c_str());
-			//ROS_WARN("The FSM should not be able to be called with state START, something is off");
-			grip_msg.open_gripper = true;
-			gripper_pub.publish(grip_msg);
-			ros::Duration(1.0).sleep();
-			if (block != NULL) setBlockGrasped(block->getName(), false);
-			block = NULL;
-			
-			next_state = REACH;
-		}
-		case REACH:
-		{
-			// addTableObst(0.1);
-			// retrieve closest obj
-			// addBoxObst("table", table_pos, table_dim);
-  		ROS_INFO("BAXTER_FSM_%s: REACH", ARM.c_str());
-			grip_msg.open_gripper = false;
-			gripper_pub.publish(grip_msg);
-			
-			sofar_hbc_01::Block2Pick b2p;
-			b2p.request.arm = ARM;
-			b2p.request.eef_pose = current_pose;
-			
-			if (!client_b2p.call(b2p)){
-			// if call returns false means no obj was retrieved
-			// the table is shy of blue blocks
-  			ROS_INFO("BAXTER_FSM_%s: ALL BLOCKS GRASPED FOR NOW (%d)", ARM.c_str(), BAXTER_ATTEMPTS_);
-				next_state = ERR;
-			// should we keep waiting until that becomes true?
-			// calling periodically (in order to account for the two arms coordination)?
-				break;
-			}
-			
-			baxter_at_rest_ = false; //< this is incredibly ugly!
-			
-			block = std::make_shared<Block>(b2p.response.block_name, b2p.response.block_color);
-			block->setPose(b2p.response.block_pose);
-			
-  		ROS_INFO("\t BLOCK FOUND: %s", block->getName().c_str());
-			
-			goal_pose = offsetGoal(block->getPose());
-			
-			 // plan and publish it
-			next_state = publishPlan(goal_pose) ? PICK : ERR;
-			break;
-		}
-		case PICK:
-		{
-			// open the grippers, go down towards the obj
-			// NOTE: 	we assume here that the grippers have enough time to open before
-			// 				the obj is reached, might have to add a delay here
-			// reach obj pose + offset
-			
-			setBlockGrasped(block->getName(), true);
-			
-			grip_msg.open_gripper = true;
-			gripper_pub.publish(grip_msg);
-			
-			if (block == NULL){
-				ROS_ERROR("Status 'PICK' with no block grasped");
-				next_state = START;
-				break;
-			}
-			// go down to the block, being sure to correctly orient the eef
-			goal_pose = block->getPose();
-			goal_pose.position.z -= 0.01; // try to go a little below midpoint
-			graspQuat(&(goal_pose.orientation));
-			
-  		ROS_INFO("BAXTER_FSM_%s: PICK", ARM.c_str());
-			
-			next_state = publishCartesian(current_pose, goal_pose) ? RAISE : ERR;
-			
-			break;
-		}
-		
-		case RAISE:
-		{
-			// raise the eef up of few cm
-			// next_state = obj.isBlue() ? PLACE_BLUE : REMOVE_RED
-			// addTableObst(0.01);
-			if (block == NULL){
-				ROS_ERROR("Status 'RAISE' with no block grasped");
-				next_state = ERR;
-				break;
-			}
-			grip_msg.open_gripper = false;	//< here as well, we assume they have time to close
-			gripper_pub.publish(grip_msg);
-			
-			ros::Duration(0.5).sleep();
-			
-			goal_pose = offsetGoal(current_pose);	// go back up a bit
-			
-  		ROS_INFO("BAXTER_FSM_%s: RAISE", ARM.c_str());
-			
-			next_state = publishCartesian(current_pose, goal_pose) ? (block->isBlue() ? PLACE_BLUE : REMOVE_RED) : ERR;
-			
-  		// addBoxObst("table", table_pos, table_dim, table_extra);
-			break;
-		}
-		case PLACE_BLUE:
-		{
-			// retrieve BlueBox pose
-			// reach blue box + offset
-			// release grippers <- done in START
-			
-			// for the moment simply stack the blue blocks on the same spot
-			//
-			//addTableObst(0.1);
-			
-			if (block == NULL){
-				ROS_ERROR("Status 'PLACE_BLUE' with no block grasped");
-				next_state = ERR;
-				break;
-			}
-			goal_pose = offsetGoal(BLOCK_DEST_);	// go back up a bit
-			
-			next_state = publishPlan(goal_pose) ? START : ERR;	//< the gripper will open in START
-			
-  		ROS_INFO("BAXTER_FSM_%s: PLACE_BLUE", ARM.c_str());
-  		ROS_INFO("\t BLOCK PLACED: %s", block->getName().c_str());
-
-			break;
-		}
-		case REMOVE_RED:
-		{
-			// retrieve empty position
-			// reach the position + offset
-			
-			// addTableObst(0.1);
-			if (block == NULL){
-				ROS_ERROR("Status 'REMOVE_RED' with no block grasped");
-				next_state = ERR;
-				break;
-			}
-			sofar_hbc_01::ClosestEmptySpace ces;
-			ces.request.arm = ARM;
-			ces.request.eef_pose = block->getPose();
-			
-			if(!client_ces.call(ces)){
-				ROS_ERROR("No empty pose was found near the picked block");
-				next_state = ERR;
-				break;
-			}
-			goal_pose = offsetGoal(ces.response.empty_pose);
-			
-			 // plan and publish it
-  		ROS_INFO("BAXTER_FSM_%s: REMOVE_RED", ARM.c_str());
-  		ROS_INFO("\t BLOCK MOVED: %s", block->getName().c_str());
-			
-			next_state = publishPlan(goal_pose) ? START : ERR; //< the gripper will open in START
-			break;
-		}
-		case END:
-		{
-			// Do nothing for now
-			// Should it (indirectly) terminate the node?
-  		ROS_INFO("BAXTER_FSM_%s: END", ARM.c_str());
-  		next_state = END;
-			break;
-		}
-	}
-	if (next_state == ERR)
-	{
-  	ROS_INFO("BAXTER_FSM_%s: ERR", ARM.c_str());
-		BAXTER_ATTEMPTS_++;
-		ROS_WARN("Going to rest state (%d)", BAXTER_ATTEMPTS_);
-  	next_state = BAXTER_ATTEMPTS_ <= MAX_BAXTER_ATTEMPTS_ ? START : END;
-  	
-  	// open the gripper to release the obj (if any)
-  	grip_msg.open_gripper = true;
-		gripper_pub.publish(grip_msg);
-		ros::Duration(1.0).sleep();
-		
-		if (block != NULL)setBlockGrasped(block->getName(), false);
-		if (!baxter_at_rest_)
-		{
-			publishPlan(baxter_rest_pose_);
-			baxter_at_rest_ = true;
-		}
-		else{	err_timer.start();	}
- 		//ros::Duration(0.5).sleep();	
-	}
-	
-	return next_state;
-}
-
 /*	NOTE: instead of calling FSM directly we could call it in a loop from the main,
 		making use of a flag to set whether a new call arrived from the last one:
 		Can't really see any improvement there if not for the possibility to impose a
@@ -435,10 +128,7 @@ int FSM(int state){
 void resCllbck (const human_baxter_collaboration::BaxterResultTrajectory::ConstPtr& msg){
 	if (msg->arm != ARM){ return; } // not meant for this node!
 	
-	if (msg->success){
-		state_ = next_state_;	// the previous step has been successful, update the current state.
-	}
-	else{
+	if (!msg->success){
 		ROS_WARN("Current trajectory interrupted, replanning.");
 	}
 	// notice here that if a collision is detected (or, far any other reason, a plan fails)
@@ -449,17 +139,15 @@ void resCllbck (const human_baxter_collaboration::BaxterResultTrajectory::ConstP
 	
 	// if the update does not occour we're replanning for the same goal, but with the current
 	// initial state.
-	next_state_ = FSM(state_);
-	// if (next_state_ == ERR){ next_state_ = FSM(ERR); } // replan in case of error
-}
-
-void err_callback(const ros::TimerEvent&){
-	ROS_WARN("ARM_%s err_callback", ARM.c_str());
-	next_state_ = FSM(next_state_);
+	
+	fsm_->trajectoryResult(msg->success);
 }
 
 int main(int argc, char** argv)
 {
+	ros::ServiceClient client_b2p, 	client_ces;
+	ros::Publisher traj_pub, gripper_pub;
+
   ros::init(argc, argv, "baxter_FSM");
   ros::NodeHandle node_handle;
 
@@ -468,9 +156,6 @@ int main(int argc, char** argv)
   // beforehand.
   ros::AsyncSpinner spinner(3);
   spinner.start();
-  // WARN: do not set 1 as subscriber queue dimension or you could lose the message, since it could 
-  // be overwritten by the one meant for the other arm!
-  ros::Subscriber res_sub = node_handle.subscribe("baxter_moveit_trajectory/result", 10, resCllbck);
   
   client_b2p = node_handle.serviceClient<sofar_hbc_01::Block2Pick>("/block_to_pick");
   client_ces = node_handle.serviceClient<sofar_hbc_01::ClosestEmptySpace>("/empty_pos");
@@ -500,10 +185,25 @@ int main(int argc, char** argv)
   traj_pub = node_handle.advertise<human_baxter_collaboration::BaxterTrajectory>("/baxter_moveit_trajectory", 1000);
   gripper_pub = node_handle.advertise<human_baxter_collaboration::BaxterGripperOpen>(std::string("/robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000);
   
-  err_timer = node_handle.createTimer(ros::Duration(3.0), err_callback);
-  err_timer.stop();
+  fsm_ = FSM::getFSM(	std::make_shared<ros::NodeHandle>(node_handle),
+  										ARM,
+  										std::make_shared<ros::ServiceClient>(client_b2p),
+  										std::make_shared<ros::ServiceClient>(client_ces),
+											std::make_shared<ros::Publisher>(traj_pub),
+											std::make_shared<ros::Publisher>(gripper_pub),
+											move_group_interface,
+											planning_scene_interface
+										);
+  fsm_->setPickHeight(table_pos[2]+table_dim[2]/2+0.15); //< 15cm over the table
+  fsm_->setBlockDest(block_dest);
+  fsm_->setRestPose(baxter_rest_pose_);
   
-  ROS_INFO("BAXTER_FSM_%s: STARTED", ARM.c_str());
+  // WARN: do not set 1 as subscriber queue dimension or you could lose the message, since it could 
+  // be overwritten by the one meant for the other arm!
+  ros::Subscriber res_sub = node_handle.subscribe("baxter_moveit_trajectory/result", 10, resCllbck);
+  ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
+  
+  fsm_->init();
 
   ros::waitForShutdown();
   return 0;
