@@ -15,6 +15,7 @@
 #include "sofar_hbc_01/utils.h"
 #include "human_baxter_collaboration/BaxterGripperOpen.h"
 #include "human_baxter_collaboration/BaxterTrajectory.h"
+#include "human_baxter_collaboration/BaxterResultTrajectory.h"
 
 // typedef int state_t
 enum state_t {START, REACH, PICK, RAISE, PLACE_BLUE, REMOVE_RED, ERR, END, IDLE};
@@ -22,24 +23,15 @@ enum state_t {START, REACH, PICK, RAISE, PLACE_BLUE, REMOVE_RED, ERR, END, IDLE}
 class FSM{
 
 	public:
-		static std::shared_ptr<FSM> getFSM(
-					std::shared_ptr<ros::NodeHandle> node_handle,
+		FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
 					std::string ARM,
-					std::shared_ptr<ros::ServiceClient> client_b2p, 	std::shared_ptr<ros::ServiceClient> client_ces,
-					std::shared_ptr<ros::Publisher> traj_pub,				std::shared_ptr<ros::Publisher> gripper_pub,
 					std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,
 					std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface
-					);
+				);
 		void setPickHeight(double n_height);
 		void setBlockDest(std::vector<double> block_dest);
 		void setRestPose(geometry_msgs::Pose rest_pose);
-		void trajectoryResult(bool success);
 		void init();
-		/*{
-			evolve = true;
-			FSM_clock = node_handle->createTimer(ros::Duration(1.0), &FSM::clock_Cllbck, this);
-		}*/
-	
 
 	private:
 		
@@ -49,11 +41,13 @@ class FSM{
 		void setBlockGrasped(std::string name, bool grasp);
 		
 		bool generatePlan			(	geometry_msgs::Pose target_pose);
-		bool generateCartesian(	geometry_msgs::Pose target_pose);
+		bool generateCartesian(	geometry_msgs::Pose mid_pose, 
+														geometry_msgs::Pose target_pose);
 		
 		bool stateEvolution();
 
 		void clock_Cllbck(const ros::TimerEvent&);
+		void trajectoryResult(const human_baxter_collaboration::BaxterResultTrajectory::ConstPtr& msg);
 				
 		state_t start();
 		state_t reachBlock();
@@ -69,7 +63,6 @@ class FSM{
 		ros::Timer FSM_clock;
 		state_t state;
 		state_t next_state;
-		// bool idle;
 		bool evolve;
 		// std::thread th_trajectoryResult; //< shouldn't be necessary
 		geometry_msgs::Pose current_pose;
@@ -86,47 +79,10 @@ class FSM{
 		std::string ARM;
 		std::shared_ptr<ros::ServiceClient> client_b2p,	client_ces;
 		std::shared_ptr<ros::Publisher> traj_pub, gripper_pub;
+		std::shared_ptr<ros::Subscriber> res_sub;
 		std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface;
 		std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface;
 
-	//protected:	//< should be protected in order to implement a singleton
-								// for some reason ROS callback do not like that, seems
-								// they try to build a new class instance, or in any case
-								// accessing the constructor
-	public:
-		static std::shared_ptr<FSM> fsm_;
-		FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
-					std::string ARM,
-					std::shared_ptr<ros::ServiceClient> client_b2p, 	std::shared_ptr<ros::ServiceClient> client_ces,
-					std::shared_ptr<ros::Publisher> traj_pub,				std::shared_ptr<ros::Publisher> gripper_pub,
-					std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,
-					std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface
-				);
-	
 };
-
-std::shared_ptr<FSM> FSM::fsm_= nullptr;
-
-std::shared_ptr<FSM> FSM::getFSM(
-					std::shared_ptr<ros::NodeHandle> node_handle,
-					std::string ARM,
-					std::shared_ptr<ros::ServiceClient> client_b2p, 	std::shared_ptr<ros::ServiceClient> client_ces,
-					std::shared_ptr<ros::Publisher> traj_pub,				std::shared_ptr<ros::Publisher> gripper_pub,
-					std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,
-					std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface
-					)
-{
-	if (fsm_ == nullptr){
-		fsm_ = std::make_shared<FSM>(
-					node_handle,
-					ARM,
-					client_b2p, client_ces,
-					traj_pub, gripper_pub,
-					move_group_interface,
-					planning_scene_interface
-			);
-	}
-	return fsm_;				
-}
 
 #endif

@@ -2,17 +2,16 @@
 #include "sofar_hbc_01/Block2Pick.h"
 #include "sofar_hbc_01/ClosestEmptySpace.h"
 #include <stdexcept>
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 
 FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
 					std::string ARM,
-					std::shared_ptr<ros::ServiceClient> client_b2p, 	std::shared_ptr<ros::ServiceClient> client_ces,
-					std::shared_ptr<ros::Publisher> traj_pub,				std::shared_ptr<ros::Publisher> gripper_pub,
 					std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,
 					std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface
 				)
-	:	node_handle(node_handle), ARM(ARM), client_b2p(client_b2p), client_ces(client_ces), 
-	traj_pub(traj_pub), gripper_pub(gripper_pub),
-	move_group_interface(move_group_interface), planning_scene_interface(planning_scene_interface)
+	:	node_handle(node_handle), ARM(ARM),
+		move_group_interface(move_group_interface),
+		planning_scene_interface(planning_scene_interface)
 {
 	BAXTER_ATTEMPTS_ = 0;
   
@@ -24,8 +23,41 @@ FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
 	block_grasp_offset_.x = 0;
 	block_grasp_offset_.y = 0;
 	block_grasp_offset_.z = 0.15; // 15 cm upward offset
+	
+	// publisher which pubs the trajectories w/ the info about the arm already in
+  traj_pub = std::make_shared<ros::Publisher>
+  						(node_handle->advertise<human_baxter_collaboration::BaxterTrajectory>
+  							("/baxter_moveit_trajectory", 1000)
+  						);
+  gripper_pub = std::make_shared<ros::Publisher>
+  						(node_handle->advertise<human_baxter_collaboration::BaxterGripperOpen>
+  							(std::string("/robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000)
+  						);
+  
+  // WARN: do not set 1 as subscriber queue dimension or you could lose the message, since it could 
+  // be overwritten by the one meant for the other arm!
+  res_sub = std::make_shared<ros::Subscriber>
+  						(node_handle->subscribe("baxter_moveit_trajectory/result", 10, &FSM::trajectoryResult, this));
+  
+  client_b2p = std::make_shared<ros::ServiceClient>
+  							(node_handle->serviceClient<sofar_hbc_01::Block2Pick>
+  								("/block_to_pick")
+  							);
+  client_ces = std::make_shared<ros::ServiceClient>
+  							(node_handle->serviceClient<sofar_hbc_01::ClosestEmptySpace>
+  								("/empty_pos")
+  							);
+  FSM_clock = node_handle->createTimer(ros::Duration(1.0), &FSM::clock_Cllbck, this, false, false);
 }
 // we need the publisher and the two clients
+
+void FSM::init()
+{
+	waitForServices(std::vector<std::shared_ptr<ros::ServiceClient> > {client_b2p, client_ces});
+	FSM_clock.start();
+	evolve = true;
+	ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
+}
 
 void FSM::setPickHeight(double n_height){
 	if (n_height <= 0.0){	throw std::invalid_argument("Expected height > 0.0"); }
@@ -38,17 +70,48 @@ void FSM::setBlockDest(std::vector<double> block_dest)
 	BLOCK_DEST_.position.x = block_dest[0];
 	BLOCK_DEST_.position.y = block_dest[1];
 	BLOCK_DEST_.position.z = block_dest[2];
+	BLOCK_DEST_.orientation.y = 1;
 }
 
 void FSM::setRestPose(geometry_msgs::Pose rest_pose){
 		baxter_rest_pose_ = rest_pose;
 }
 
-void FSM::graspQuat(geometry_msgs::Quaternion* orig_orientation){
+void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
+	tf2::Quaternion q_orig, q_goal, q_rel, q_inv;
+	tf2::convert(*goal_orientation, q_goal);
+	tf2::convert(current_pose.orientation, q_orig);
+	q_inv = q_orig;
+	q_inv[3] = - q_orig[3]; //< inverse
+	q_rel = q_goal*q_inv;
+	q_rel.normalize();
+	
+	double r,p,y;
+	tf2::Matrix3x3 mat(q_rel);
+	mat.getRPY(r,p,y);
+	//std::vector<double> cRPY = move_group_interface->getCurrentRPY();
+	
+	ROS_DEBUG("%s RELATIVEy: %lf", ARM.c_str(), y);
+	// allow for perpendicular grasps
+	while (abs(y - M_PI/2) <= M_PI/4){y -= M_PI/2;}
+	while (abs(y + M_PI/2) <= M_PI/4){y += M_PI/2;}
+	
+	q_rel.setRPY(r,p,y);  // Calculate the new orientation
+	q_goal = q_rel*q_orig;
+	q_goal.normalize();
+
+	tf2::Matrix3x3 mat_g(q_goal);
+	mat_g.getRPY(r,p,y);
+	q_goal.setRPY(r, 0.0, y);
+	q_goal.normalize();
+	
+	tf2::convert(q_goal, *goal_orientation);
+	/*
 	orig_orientation->x = 0.0;
 	orig_orientation->y = 1.0;
 	orig_orientation->z = 0.0;
 	orig_orientation->w = 0.0;
+	*/
 }
 
 geometry_msgs::Pose FSM::offsetGoal(geometry_msgs::Pose goal_pose){
@@ -58,7 +121,11 @@ geometry_msgs::Pose FSM::offsetGoal(geometry_msgs::Pose goal_pose){
 	ogp.position.y += block_grasp_offset_.y;
 	ogp.position.z = pick_height>0.0 ? pick_height : ogp.position.z + block_grasp_offset_.z;
 	
-	graspQuat(&(ogp.orientation));
+	//graspQuat(&(ogp.orientation));
+	ogp.orientation.x = 0.0;
+	ogp.orientation.y = 1.0;
+	ogp.orientation.z = 0.0;
+	ogp.orientation.w = 0.0;
 
 	return ogp;
 }
@@ -122,13 +189,26 @@ bool FSM::generatePlan(	geometry_msgs::Pose target_pose)
   return true;
 }
 
-bool FSM::generateCartesian(geometry_msgs::Pose target_pose)
+bool FSM::generateCartesian(geometry_msgs::Pose mid_pose, geometry_msgs::Pose target_pose)
 {
   moveit_msgs::RobotTrajectory c_trajectory;
   std::vector<geometry_msgs::Pose> waypoints;
   double eef_step = 0.15, jump_threshold = 0.0;
-  
 	waypoints.push_back(current_pose);
+	////// 
+	/* 
+  geometry_msgs::Pose init_rot;
+  init_rot.position.x = current_pose.position.x;
+  init_rot.position.y = current_pose.position.y;
+  init_rot.position.z = current_pose.position.z;
+  
+  init_rot.orientation.x = target_pose.orientation.x;
+  init_rot.orientation.y = target_pose.orientation.y;
+  init_rot.orientation.z = target_pose.orientation.z;
+  init_rot.orientation.w = target_pose.orientation.w;
+  */
+  //////
+	waypoints.push_back(mid_pose);
 	waypoints.push_back(target_pose);
 	double fraction = move_group_interface->computeCartesianPath(waypoints, eef_step, jump_threshold, c_trajectory);
   
@@ -200,10 +280,14 @@ state_t FSM::pickBlock()
 			
 			// go down to the block, being sure to correctly orient the eef
 	goal_pose = block->getPose();
-	goal_pose.position.z -= 0.01; // try to go a little below the midpoint
+	// goal_pose.position.z -= 0.01; // try to go a little below the midpoint
 	graspQuat(&(goal_pose.orientation));
 	
-	return generateCartesian(goal_pose) ? RAISE : ERR;
+	geometry_msgs::Pose mid_rot;
+	mid_rot.position 		=	current_pose.position;
+	mid_rot.orientation = goal_pose.orientation;
+	
+	return generateCartesian(mid_rot, goal_pose) ? RAISE : ERR;
 }
 
 state_t FSM::raiseBlock()
@@ -219,7 +303,12 @@ state_t FSM::raiseBlock()
 	
 	goal_pose = offsetGoal(current_pose);	// go back up a bit
 	
-	return generateCartesian(goal_pose) ? (block->isBlue() ? PLACE_BLUE : REMOVE_RED) : ERR;
+	geometry_msgs::Pose end_rot;
+	end_rot.position 		=	goal_pose.position;
+	end_rot.orientation = current_pose.orientation;
+	
+	return generateCartesian(end_rot, goal_pose) ? 
+					(block->isBlue() ? PLACE_BLUE : REMOVE_RED) : ERR;
 }
 
 state_t FSM::placeBlue()
@@ -297,7 +386,7 @@ bool FSM::stateEvolution(){
 			}
 			// baxter_at_rest_ = false; //< this is incredibly ugly!
   		ROS_INFO("\t BLOCK FOUND: %s", block->getName().c_str());
-			
+			BAXTER_ATTEMPTS_ = 0;
 			auto_evolve = false;
 			
 			break;
@@ -432,17 +521,16 @@ void FSM::clock_Cllbck(const ros::TimerEvent&)
 	}
 }
 
-void FSM::trajectoryResult(bool success)
+void FSM::trajectoryResult(const human_baxter_collaboration::BaxterResultTrajectory::ConstPtr& msg)
 {
-	if (!success){	next_state = state;	}	//< rollback
-	evolve = true;
+	if (msg->arm != ARM){ return; } // not meant for this node!
+	
 	ROS_DEBUG("BAXTER_FSM_%s: RECEIVED RESULT", ARM.c_str());
-}
-
-void FSM::init()
-{
+	if (!msg->success){	
+		next_state = state;
+		ROS_WARN("Current trajectory interrupted, replanning.");
+	}	//< rollback
 	evolve = true;
-	FSM_clock = node_handle->createTimer(ros::Duration(1.0), &FSM::clock_Cllbck, this);
 }
 
 // NOTE: theoretically, a lot of race conditions might appear with evolve, state, next_state

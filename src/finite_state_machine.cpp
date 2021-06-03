@@ -125,23 +125,6 @@ void addBoxObst(std::string obst_name,
 		rate for such check. Which, being this a slowly-evolving FSM, wouldn't bring any
 		improvement I can think of.
 */
-void resCllbck (const human_baxter_collaboration::BaxterResultTrajectory::ConstPtr& msg){
-	if (msg->arm != ARM){ return; } // not meant for this node!
-	
-	if (!msg->success){
-		ROS_WARN("Current trajectory interrupted, replanning.");
-	}
-	// notice here that if a collision is detected (or, far any other reason, a plan fails)
-	// replanning happens immediately, which is a waste of comp. power in case of slowly evolving
-	// scenarios (whereas a service informing this node of the disappearance of the possible collision
-	// that re-initiate the process might be preferred).
-	// As a possible patch, we could try and wait for a couple seconds before replanning.
-	
-	// if the update does not occour we're replanning for the same goal, but with the current
-	// initial state.
-	
-	fsm_->trajectoryResult(msg->success);
-}
 
 int main(int argc, char** argv)
 {
@@ -156,15 +139,6 @@ int main(int argc, char** argv)
   // beforehand.
   ros::AsyncSpinner spinner(3);
   spinner.start();
-  
-  client_b2p = node_handle.serviceClient<sofar_hbc_01::Block2Pick>("/block_to_pick");
-  client_ces = node_handle.serviceClient<sofar_hbc_01::ClosestEmptySpace>("/empty_pos");
-  
-  std::vector<std::shared_ptr<ros::ServiceClient> > vec_client;
-  vec_client.push_back(std::make_shared<ros::ServiceClient>(client_b2p));
-  vec_client.push_back(std::make_shared<ros::ServiceClient>(client_ces));
-	// wait for all the service to appear  
-  waitForServices(vec_client);
 
   loadParam();
   // Add table
@@ -179,29 +153,17 @@ int main(int argc, char** argv)
   
   addBoxObst("human_wall", wall_pos, wall_dim);
   
-  /* Force bootstrap: */
-  
-	// publisher which pubs the trajectories w/ the info about the arm already in
-  traj_pub = node_handle.advertise<human_baxter_collaboration::BaxterTrajectory>("/baxter_moveit_trajectory", 1000);
-  gripper_pub = node_handle.advertise<human_baxter_collaboration::BaxterGripperOpen>(std::string("/robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000);
-  
-  fsm_ = FSM::getFSM(	std::make_shared<ros::NodeHandle>(node_handle),
-  										ARM,
-  										std::make_shared<ros::ServiceClient>(client_b2p),
-  										std::make_shared<ros::ServiceClient>(client_ces),
-											std::make_shared<ros::Publisher>(traj_pub),
-											std::make_shared<ros::Publisher>(gripper_pub),
-											move_group_interface,
-											planning_scene_interface
-										);
+  fsm_ = std::make_shared<FSM>(
+  						std::make_shared<ros::NodeHandle>(node_handle),
+  						ARM,
+							move_group_interface,
+							planning_scene_interface
+						);
   fsm_->setPickHeight(table_pos[2]+table_dim[2]/2+0.15); //< 15cm over the table
   fsm_->setBlockDest(block_dest);
   fsm_->setRestPose(baxter_rest_pose_);
   
-  // WARN: do not set 1 as subscriber queue dimension or you could lose the message, since it could 
-  // be overwritten by the one meant for the other arm!
-  ros::Subscriber res_sub = node_handle.subscribe("baxter_moveit_trajectory/result", 10, resCllbck);
-  ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
+ // ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
   
   fsm_->init();
 
