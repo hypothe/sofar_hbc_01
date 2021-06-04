@@ -1,3 +1,5 @@
+/* Author: Marco G. Fedozzi */
+
 #include "sofar_hbc_01/Block.h"
 
 Block::Block(std::string name, std::string color)

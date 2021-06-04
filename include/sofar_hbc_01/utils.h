@@ -1,3 +1,5 @@
+/* Author: Marco G. Fedozzi */
+
 #ifndef UTIL_H
 #define UTIL_H
 

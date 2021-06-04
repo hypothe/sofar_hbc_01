@@ -1,3 +1,5 @@
+/* Author: Marco G. Fedozzi */
+
 #include "sofar_hbc_01/FSM.h"
 #include "sofar_hbc_01/Block2Pick.h"
 #include "sofar_hbc_01/ClosestEmptySpace.h"

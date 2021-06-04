@@ -1,3 +1,5 @@
+/* Author: Marco G. Fedozzi */
+
 #ifndef FSM_H
 #define FSM_H
 

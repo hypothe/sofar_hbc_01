@@ -1,3 +1,5 @@
+/* Author: Marco G. Fedozzi */
+
 #include "sofar_hbc_01/utils.h"
 
 void waitForServices (std::vector<std::shared_ptr<ros::ServiceClient> > clients){

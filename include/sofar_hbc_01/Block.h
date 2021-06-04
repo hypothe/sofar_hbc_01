@@ -1,3 +1,5 @@
+/* Author: Marco G. Fedozzi */
+
 #ifndef BLOCK_H
 #define BLOCK_H
 
