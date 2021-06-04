@@ -3,7 +3,7 @@
 /*
 	Current limitations:
 	- for the LEFT arm blocks are delivered always in the center of the Bluebox,
-		not ideal in the simulation scenario (although in realiy, since they're dropped
+		not ideal in the simulation scenario (although in reality, since they're dropped
 		and nod placed, they should roll over and not stack).
 	- in case of a failed trajectory replanning happens immediately, and not when the
 		scene is considered free: might not be a problem in a non-slowly evolving scenario

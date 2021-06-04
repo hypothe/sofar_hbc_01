@@ -77,6 +77,9 @@ void FSM::setRestPose(geometry_msgs::Pose rest_pose){
 		baxter_rest_pose_ = rest_pose;
 }
 
+template <typename T> int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
+}
 void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 	tf2::Quaternion q_orig, q_goal, q_rel, q_inv;
 	tf2::convert(*goal_orientation, q_goal);
@@ -87,31 +90,37 @@ void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 	q_rel.normalize();
 	
 	double r,p,y;
+	
+	tf2::Matrix3x3 mat_orig(q_orig);
+	mat_orig.getRPY(r,p,y);
+	ROS_DEBUG("%s ORIGINALy: %lf", ARM.c_str(), y*180.0/M_PI);
+	
+	
 	tf2::Matrix3x3 mat(q_rel);
 	mat.getRPY(r,p,y);
 	//std::vector<double> cRPY = move_group_interface->getCurrentRPY();
 	
-	ROS_DEBUG("%s RELATIVEy: %lf", ARM.c_str(), y);
 	// allow for perpendicular grasps
-	while (abs(y - M_PI/2) <= M_PI/4){y -= M_PI/2;}
-	while (abs(y + M_PI/2) <= M_PI/4){y += M_PI/2;}
+	/*while (abs(y - M_PI/2) <= M_PI/4){y -= M_PI/2;}
+	while (abs(y + M_PI/2) <= M_PI/4){y += M_PI/2;}*/
+	
+	while (abs(y) >= M_PI/4){ y -= sgn<double>(y)*M_PI/2; }
+	
+	ROS_DEBUG("%s AFTER1 RELATIVEy: %lf", ARM.c_str(), y*180.0/M_PI);
 	
 	q_rel.setRPY(r,p,y);  // Calculate the new orientation
-	q_goal = q_rel*q_orig;
-	q_goal.normalize();
+	q_goal = q_orig*q_rel;
+//	q_goal.normalize();
 
 	tf2::Matrix3x3 mat_g(q_goal);
 	mat_g.getRPY(r,p,y);
+	ROS_DEBUG("%s GOALEy: %lf", ARM.c_str(), y*180.0/M_PI);
 	q_goal.setRPY(r, 0.0, y);
 	q_goal.normalize();
+	//ROS_DEBUG("%s AFTER3 RELATIVEy: %lf", ARM.c_str(), y*180.0/M_PI);
 	
 	tf2::convert(q_goal, *goal_orientation);
-	/*
-	orig_orientation->x = 0.0;
-	orig_orientation->y = 1.0;
-	orig_orientation->z = 0.0;
-	orig_orientation->w = 0.0;
-	*/
+	
 }
 
 geometry_msgs::Pose FSM::offsetGoal(geometry_msgs::Pose goal_pose){
