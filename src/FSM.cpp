@@ -487,6 +487,7 @@ bool FSM::stateEvolution(){
 			// Should it (indirectly) terminate the node?
   		ROS_INFO("BAXTER_FSM_%s: END", ARM.c_str());
   		next_state = END;
+  		ros::Duration(5.0).sleep();
 			break;
 		}
 		case ERR:
