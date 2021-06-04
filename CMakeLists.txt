@@ -126,6 +126,7 @@ include_directories(
 add_library(${PROJECT_NAME}
   src/Block.cpp
   src/utils.cpp
+  src/FSM.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
