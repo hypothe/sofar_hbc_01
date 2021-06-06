@@ -1,6 +1,7 @@
 # position of an empty spot on the table
 
 string arm
+string block_name
 geometry_msgs/Pose eef_pose
 
 ---
