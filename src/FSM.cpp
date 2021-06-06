@@ -100,11 +100,8 @@ void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 	
 	tf2::Matrix3x3 mat(q_rel);
 	mat.getRPY(r,p,y);
-	//std::vector<double> cRPY = move_group_interface->getCurrentRPY();
 	
 	// allow for perpendicular grasps
-	/*while (abs(y - M_PI/2) <= M_PI/4){y -= M_PI/2;}
-	while (abs(y + M_PI/2) <= M_PI/4){y += M_PI/2;}*/
 	
 	while (abs(y) >= M_PI/4){ y -= sgn<double>(y)*M_PI/2; }
 	
@@ -112,14 +109,12 @@ void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 	
 	q_rel.setRPY(r,p,y);  // Calculate the new orientation
 	q_goal = q_orig*q_rel;
-//	q_goal.normalize();
 
 	tf2::Matrix3x3 mat_g(q_goal);
 	mat_g.getRPY(r,p,y);
 	ROS_DEBUG("%s GOALEy: %lf", ARM.c_str(), y*180.0/M_PI);
 	q_goal.setRPY(r, 0.0, y);
 	q_goal.normalize();
-	//ROS_DEBUG("%s AFTER3 RELATIVEy: %lf", ARM.c_str(), y*180.0/M_PI);
 	
 	tf2::convert(q_goal, *goal_orientation);
 	
@@ -206,19 +201,7 @@ bool FSM::generateCartesian(geometry_msgs::Pose mid_pose, geometry_msgs::Pose ta
   std::vector<geometry_msgs::Pose> waypoints;
   double eef_step = 0.15, jump_threshold = 0.0;
 	waypoints.push_back(current_pose);
-	////// 
-	/* 
-  geometry_msgs::Pose init_rot;
-  init_rot.position.x = current_pose.position.x;
-  init_rot.position.y = current_pose.position.y;
-  init_rot.position.z = current_pose.position.z;
-  
-  init_rot.orientation.x = target_pose.orientation.x;
-  init_rot.orientation.y = target_pose.orientation.y;
-  init_rot.orientation.z = target_pose.orientation.z;
-  init_rot.orientation.w = target_pose.orientation.w;
-  */
-  //////
+	
 	waypoints.push_back(mid_pose);
 	waypoints.push_back(target_pose);
 	double fraction = move_group_interface->computeCartesianPath(waypoints, eef_step, jump_threshold, c_trajectory);
@@ -325,8 +308,15 @@ state_t FSM::raiseBlock()
 state_t FSM::placeBlue()
 {
 	if (block == nullptr){	return ERR;	}
-	goal_pose = offsetGoal(BLOCK_DEST_);	// go back up a bit
-			
+	
+	sofar_hbc_01::ClosestEmptySpace ces;
+	ces.request.arm = ARM;
+	ces.request.eef_pose = BLOCK_DEST_;
+	
+	if(!client_ces->call(ces)){
+		return ERR;
+	}
+	goal_pose = offsetGoal(ces.response.empty_pose);
 	
 	return generatePlan(goal_pose) ? START : ERR;	//< the gripper will open in START			
 }
