@@ -8,6 +8,20 @@ add_compile_options(-std=c++11)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 
+find_package(Eigen3 REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBFCL_PC REQUIRED fcl)
+set(LIBFCL_INCLUDE_DIRS ${LIBFCL_PC_INCLUDE_DIRS})
+# find *absolute* paths to LIBFCL_LIBRARIES
+set(LIBFCL_LIBRARIES)
+
+foreach(_lib ${LIBFCL_PC_LIBRARIES})
+  find_library(_lib_${_lib} ${_lib} HINTS ${LIBFCL_PC_LIBRARY_DIRS})
+  list(APPEND LIBFCL_LIBRARIES ${_lib_${_lib}})
+endforeach()
+
+
 find_package(catkin REQUIRED COMPONENTS
   moveit_msgs
   geometry_msgs
@@ -18,6 +32,7 @@ find_package(catkin REQUIRED COMPONENTS
   human_baxter_collaboration
   tf2_geometry_msgs
   std_msgs
+  tf2_eigen
 )
 
 ## System dependencies are found with CMake's conventions
@@ -106,8 +121,8 @@ generate_messages(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
-  CATKIN_DEPENDS moveit_msgs geometry_msgs sensor_msgs message_runtime
-#  DEPENDS system_lib
+  CATKIN_DEPENDS moveit_msgs geometry_msgs sensor_msgs message_runtime tf2_eigen
+  DEPENDS system_lib LIBFCL EIGEN3
 )
 
 ###########
@@ -121,12 +136,18 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
 )
+include_directories(
+  SYSTEM
+  ${LIBFCL_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+)
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
   src/Block.cpp
   src/utils.cpp
   src/FSM.cpp
+  src/Link.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
@@ -144,6 +165,9 @@ add_executable(finite_state_machine src/finite_state_machine.cpp)
 add_executable(tf_server src/tf_server.cpp)
 # add_executable(empty_pos_server src/tmp_empty_pos_server.cpp)
 add_executable(empty_pos_server1 src/checkboard_empty_pos_server.cpp)
+
+
+add_executable(fcl_test test/fcl_test.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -164,6 +188,10 @@ add_dependencies(tf_server
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
 add_dependencies(empty_pos_server1
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
+
+add_dependencies(fcl_test
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
 
@@ -193,6 +221,13 @@ target_link_libraries(empty_pos_server1
   ${PROJECT_NAME}
 )
 target_link_libraries(empty_pos_server1
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(fcl_test
+  ${PROJECT_NAME}
+)
+target_link_libraries(fcl_test
   ${catkin_LIBRARIES}
 )
 
