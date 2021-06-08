@@ -10,7 +10,6 @@
 #include <Eigen/Geometry>
 
 #include "fcl/fcl.h"
-//#include "eigen_matrix_compare.h"
 #include "fcl/narrowphase/collision_object.h"
 #include "fcl/narrowphase/distance.h"
 

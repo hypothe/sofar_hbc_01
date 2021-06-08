@@ -69,8 +69,12 @@ int main(int argc, char** argv)
  	
  	//create the vector with the 9 cell
 	geometry_msgs::Point point;
-	for(int j = 1; j >= -1; j--){
-		for(int i = -1; i <= 1; i++){
+	point.x = 0.0; point.y = 0.0;
+	shift.push_back(point);
+	
+	for(int i = -1; i <= 1; i++){
+		for(int j = 1; j >= -1; j--){
+			if (i==0 && j==0) continue;
 			point.x = 0.05*i;
 			point.y = 0.05*j;
 			shift.push_back(point);

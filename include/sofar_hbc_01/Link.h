@@ -33,15 +33,20 @@ class Link
 	
 		Link(std::string name, double radius, double length);
 		
-		void setStartPoint(geometry_msgs::Point p);
+		void setPose(geometry_msgs::Pose p);
+		void setNext(std::shared_ptr<Link> next);
+		// void initCollision(double radius);
+		
+		void updateCollisionObject(); //< call this only after updating the pose
 		/*
 		void setOrientation(geometry_msgs::Quaternion q);
 		void setmid_point(geometry_msgs::Point p);
 		void setPose(geometry_msgs::Pose pose);
 		*/
-		
+		double getRadius();
+		double getLength();
 		std::string getName();
-		geometry_msgs::Point getStartPoint();
+		geometry_msgs::Pose getPose();
 		std::shared_ptr<Link> getNext();
 		std::shared_ptr<fcl::CollisionObjectf> getCollisionObject();
 		

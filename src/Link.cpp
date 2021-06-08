@@ -1,8 +1,9 @@
 /* Author: Marco G. Fedozzi */
 
 #include "sofar_hbc_01/Link.h"
+#include "ros/ros.h"
 
-Link::Link(std::string name, double radiu, double lengths)
+Link::Link(std::string name, double radius, double length)// next=nullptr)
 	: name(name), radius(radius), length(length)
 {
 	cyl = std::make_shared<fcl::Cylinderf>(radius, length);
@@ -10,14 +11,43 @@ Link::Link(std::string name, double radiu, double lengths)
 }
 
 
-void Link::setStartPoint(geometry_msgs::Point p)
+void Link::setPose(geometry_msgs::Pose pose)
 {
-	start_point = p;
+	this->pose = pose;
 }
 
-geometry_msgs::Point Link::getStartPoint()
+void Link::setNext(std::shared_ptr<Link> next)
 {
-	return start_point;
+	this->next = next;
+}
+/*
+void Link::initCollision(double radius)
+{
+	geometry_msgs::Pose next_start;
+	if (next_start == nullptr)
+	{
+		ROS_ERROR("Uninitialized 'next' field for %s", this.name.c_str());
+		return;
+	}
+	
+	if (this.length <= 0){
+		next_start = next->getStartPoint();
+		length = dist3(start, next_start);
+	}
+	
+}
+*/
+double Link::getRadius()
+{
+	return radius;
+}
+double Link::getLength()
+{
+	return length;
+}
+geometry_msgs::Pose Link::getPose()
+{
+	return pose;
 }
 		
 std::string Link::getName()
@@ -31,7 +61,8 @@ std::shared_ptr<Link> Link::getNext()
 // WARN: no check on time coherency done at this level!
 // might switch to *Stamped and do a try-except for improved
 // robustness
-std::shared_ptr<fcl::CollisionObjectf> Link::getCollisionObject()
+/*
+void Link::updateCollisionObject()
 {
 	fcl::Transform3f t = fcl::Transform3f::Identity();
 	
@@ -53,7 +84,28 @@ std::shared_ptr<fcl::CollisionObjectf> Link::getCollisionObject()
 	t.rotate(q);
 	
 	coll->setTransform(t);
+}*/
+void Link::updateCollisionObject()
+{
+	fcl::Transform3f t = fcl::Transform3f::Identity();
+	// Get curernt link heading
+	fcl::Quaternionf q(	pose.orientation.w, pose.orientation.x,
+											pose.orientation.y, pose.orientation.z);
 	
-	return coll;
+	fcl::Vector3f vec_mid_dist(0.0,0.0,length/2.0), vec_start_point(pose.position.x, pose.position.y ,pose.position.z);
+	// get the link middle point by adding the semi-length of the link oriented
+	//fcl::Vector3f vec_mid_point = q*vec_mid_dist + vec_start_point;
+	fcl::Vector3f vec_mid_point = q*vec_mid_dist + vec_start_point;
+	ROS_DEBUG("MID_POINT X:%lf Y:%lf Z:%lf", vec_mid_point[0], vec_mid_point[1], vec_mid_point[2]);
+	
+	t.translate(vec_mid_point);
+	t.rotate(q);
+	
+	coll->setTransform(t);
 }
 		
+
+std::shared_ptr<fcl::CollisionObjectf> Link::getCollisionObject()
+{
+	return coll;
+}

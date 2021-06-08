@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.0.2)
 project(sofar_hbc_01)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++11)
+# add_compile_options(-std=c++11)
+add_compile_options(-std=c++14)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -165,6 +166,7 @@ add_executable(finite_state_machine src/finite_state_machine.cpp)
 add_executable(tf_server src/tf_server.cpp)
 # add_executable(empty_pos_server src/tmp_empty_pos_server.cpp)
 add_executable(empty_pos_server1 src/checkboard_empty_pos_server.cpp)
+add_executable(collision_detection src/collision_detection.cpp)
 
 
 add_executable(fcl_test test/fcl_test.cpp)
@@ -190,6 +192,10 @@ add_dependencies(tf_server
 add_dependencies(empty_pos_server1
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
+add_dependencies(collision_detection
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
+
 
 add_dependencies(fcl_test
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
@@ -221,6 +227,12 @@ target_link_libraries(empty_pos_server1
   ${PROJECT_NAME}
 )
 target_link_libraries(empty_pos_server1
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(collision_detection
+  ${PROJECT_NAME}
+)
+target_link_libraries(collision_detection
   ${catkin_LIBRARIES}
 )
 
