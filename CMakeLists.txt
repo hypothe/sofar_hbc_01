@@ -24,6 +24,7 @@ endforeach()
 
 
 find_package(catkin REQUIRED COMPONENTS
+	control_msgs
   moveit_msgs
   geometry_msgs
   sensor_msgs
@@ -167,7 +168,7 @@ add_executable(tf_server src/tf_server.cpp)
 # add_executable(empty_pos_server src/tmp_empty_pos_server.cpp)
 add_executable(empty_pos_server1 src/checkboard_empty_pos_server.cpp)
 add_executable(collision_detection src/collision_detection.cpp)
-
+add_executable(gripper_routing src/gripper_routing.cpp)
 
 add_executable(fcl_test test/fcl_test.cpp)
 
@@ -193,6 +194,9 @@ add_dependencies(empty_pos_server1
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
 add_dependencies(collision_detection
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
+add_dependencies(gripper_routing
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
 
@@ -233,6 +237,12 @@ target_link_libraries(collision_detection
   ${PROJECT_NAME}
 )
 target_link_libraries(collision_detection
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(gripper_routing
+  ${PROJECT_NAME}
+)
+target_link_libraries(gripper_routing
   ${catkin_LIBRARIES}
 )
 

@@ -41,6 +41,7 @@ class FSM{
 		geometry_msgs::Pose offsetGoal(geometry_msgs::Pose goal_pose);
 		double getClosestBlock(geometry_msgs::Pose current_pose);
 		void setBlockGrasped(std::string name, bool grasp);
+		void gripperOpen(bool open);
 		
 		bool generatePlan			(	geometry_msgs::Pose target_pose);
 		bool generateCartesian(	geometry_msgs::Pose mid_pose, 

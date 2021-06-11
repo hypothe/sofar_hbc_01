@@ -6,8 +6,8 @@ block_grasped:   {A: false, B: false, C: false, D: false, E: false, F: false, G:
 
 blocks_dim: 0.05
 
-table_pos:  [0.7673182, 0.0, 0.4]
-table_dim:  [0.6, 2.0, 0.8]
+table_pos:  [0.7673182, 0.0, 0.3875] # accounting for lower real table
+table_dim:  [0.6, 2.0, 0.775]
 
 #MiddlePlacementN: [0.74, 0.0, 0.825]
 #Bluebox:          [0.668, 0.608, 0.801]

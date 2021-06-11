@@ -33,7 +33,7 @@ FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
   						);
   gripper_pub = std::make_shared<ros::Publisher>
   						(node_handle->advertise<human_baxter_collaboration::BaxterGripperOpen>
-  							(std::string("/robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000)
+  							(std::string("/baxter/end_effector/"+ARM+"_gripper/gripper_open"), 1000)
   						);
   
   // WARN: do not set 1 as subscriber queue dimension or you could lose the message, since it could 
@@ -112,7 +112,7 @@ void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 
 	tf2::Matrix3x3 mat_g(q_goal);
 	mat_g.getRPY(r,p,y);
-	ROS_DEBUG("%s GOALEy: %lf", ARM.c_str(), y*180.0/M_PI);
+	ROS_DEBUG("%s GOALy: %lf", ARM.c_str(), y*180.0/M_PI);
 	q_goal.setRPY(r, 0.0, y);
 	q_goal.normalize();
 	
@@ -150,6 +150,16 @@ double FSM::getClosestBlock(geometry_msgs::Pose current_pose){
 	
 	return dist3(current_pose, block->getPose());
 }
+
+void FSM::gripperOpen(bool open)
+{
+	human_baxter_collaboration::BaxterGripperOpen grip_msg;
+	
+	grip_msg.open_gripper = open;
+	gripper_pub->publish(grip_msg);
+}
+
+
 void FSM::setBlockGrasped(std::string name, bool grasp){
 	std::map<std::string, bool> grasped;
 	
@@ -220,11 +230,9 @@ bool FSM::generateCartesian(geometry_msgs::Pose mid_pose, geometry_msgs::Pose ta
 
 state_t FSM::start()
 {
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	
 	if (block != nullptr){
-		grip_msg.open_gripper = true;
-		gripper_pub->publish(grip_msg);
+		gripperOpen(true);
 		ros::Duration(1.0).sleep();
 		setBlockGrasped(block->getName(), false);	
 	}
@@ -236,9 +244,7 @@ state_t FSM::start()
 
 state_t FSM::reachBlock()
 {
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
-	grip_msg.open_gripper = false;
-	gripper_pub->publish(grip_msg);
+	gripperOpen(false);
 	if (getClosestBlock(current_pose) < 0){
 	// if call returns negative means no obj was retrieved
 	// the table is shy of blue blocks
@@ -263,14 +269,12 @@ state_t FSM::pickBlock()
 	
 	// When calling this foo perform the "get closest block" and, if it differs
 	// from the previous one, go to REACH (looping?)
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	if (block == nullptr){	return ERR;	}
 	
 	setBlockGrasped(block->getName(), true);  //< technically not grasped yet,
 																						//	but setting this here makes sense
 	
-	grip_msg.open_gripper = true;
-	gripper_pub->publish(grip_msg);
+	gripperOpen(true);
 			
 			// go down to the block, being sure to correctly orient the eef
 	goal_pose = block->getPose();
@@ -286,12 +290,10 @@ state_t FSM::pickBlock()
 
 state_t FSM::raiseBlock()
 {
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	if (block == nullptr){
 		return ERR;
 	}
-	grip_msg.open_gripper = false;
-	gripper_pub->publish(grip_msg);
+	gripperOpen(false);
 	
 	ros::Duration(0.5).sleep();	//< here as well, we assume they have time to close
 	
@@ -342,12 +344,10 @@ state_t FSM::removeRed()
 state_t	FSM::rest()
 {
 	// open the gripper to release the obj (if any)
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	if (block != nullptr)
 	{
 		setBlockGrasped(block->getName(), false);
-		grip_msg.open_gripper = true;
-		gripper_pub->publish(grip_msg);
+		gripperOpen(true);
 		ros::Duration(1.0).sleep();
 		BAXTER_ATTEMPTS_ = 0;
 	}
