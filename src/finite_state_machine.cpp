@@ -29,6 +29,7 @@
 //#include "control_msgs/GripperCommandActionGoal.h"
 #include "human_baxter_collaboration/BaxterTrajectory.h"
 #include "human_baxter_collaboration/BaxterResultTrajectory.h"
+
 #include "sofar_hbc_01/utils.h"
 #include "sofar_hbc_01/FSM.h"
 #include "sofar_hbc_01/Block2Pick.h"
@@ -39,7 +40,8 @@ std::map<std::string, bool> placed_;
 std::vector<double> table_pos, table_dim, table_extra = {0.0, 0.0, 0.1};
 std::vector<double> block_dest;
 
-geometry_msgs::Pose baxter_rest_pose_;
+// geometry_msgs::Pose baxter_rest_pose_;
+std::vector<double> baxter_rest_pose_;
 
 // MoveIt operates on sets of joints called "planning groups" and stores them in an object called
 // the `JointModelGroup`. Throughout MoveIt the terms "planning group" and "joint model group"
@@ -71,52 +73,14 @@ void loadParam(){
   PLANNING_GROUP = ARM+"_arm";
   move_group_interface = std::make_shared<moveit::planning_interface::MoveGroupInterface>(PLANNING_GROUP);
 	planning_scene_interface = std::make_shared<moveit::planning_interface::PlanningSceneInterface>();
-	move_group_interface->setPlannerId("RRTConnectkConfigMechanical");
+	move_group_interface->setPlannerId("LazyRRTkConfigDefault");
+	 // RRTConnectkConfigMechanical
 	move_group_interface->setPlanningTime(2);
 	move_group_interface->setNumPlanningAttempts(4);
 	
-  baxter_rest_pose_ = move_group_interface->getCurrentPose().pose;
+  // baxter_rest_pose_ = move_group_interface->getCurrentPose().pose;
+  baxter_rest_pose_ = move_group_interface->getCurrentJointValues();
 	
-}
-
-void addBoxObst(std::string obst_name,
-								std::vector<double> box_pos,
-								std::vector<double> box_dim,
-								std::vector<double> inflate = std::vector<double>(3, 0.0)){
-								
-	moveit_msgs::CollisionObject collision_object;
-  collision_object.header.frame_id = move_group_interface->getPlanningFrame();
-
-  // The id of the object is used to identify it.
-  collision_object.id = obst_name;
-	std::vector<double> table_pos, table_dim;
-
-	// Define a box to add to the world.
-  shape_msgs::SolidPrimitive primitive;
-  primitive.type = primitive.BOX;
-  primitive.dimensions.resize(3);
-  primitive.dimensions[primitive.BOX_X] = box_dim[0] + 2*inflate[0];
-  primitive.dimensions[primitive.BOX_Y] = box_dim[1] + 2*inflate[1];
-  primitive.dimensions[primitive.BOX_Z] = box_dim[2] + 2*inflate[2]; //< added something... maybe replace with block dim
-
-  // Define a pose for the box (specified relative to frame_id)
-  geometry_msgs::Pose table_pose;
-  table_pose.orientation.w = 1.0;
-  table_pose.position.x = box_pos[0];
-  table_pose.position.y = box_pos[1];
-  table_pose.position.z = box_pos[2];
-
-  collision_object.primitives.push_back(primitive);
-  collision_object.primitive_poses.push_back(table_pose);
-  collision_object.operation = collision_object.ADD;
-
-  std::vector<moveit_msgs::CollisionObject> collision_objects;
-  collision_objects.push_back(collision_object);
-
-  // Now, let's add the collision object into the world
-  // (using a vector that could contain additional objects)
-  ROS_INFO("Table added into the world");
-  planning_scene_interface->applyCollisionObjects(collision_objects);
 }
 
 /*	NOTE: instead of calling FSM directly we could call it in a loop from the main,
@@ -133,6 +97,8 @@ int main(int argc, char** argv)
 
   ros::init(argc, argv, "baxter_FSM");
   ros::NodeHandle node_handle;
+  std::vector<moveit_msgs::CollisionObject> collision_objects;
+  moveit_msgs::CollisionObject half_table_CO;
 
   // ROS spinning must be running for the MoveGroupInterface to get information
   // about the robot's state. One way to do this is to start an AsyncSpinner
@@ -142,8 +108,9 @@ int main(int argc, char** argv)
 
   loadParam();
   // Add table
-  addBoxObst("table", table_pos, table_dim);
-  // Add wall
+  collision_objects.push_back(genBoxObst(move_group_interface, "table", table_pos, table_dim));
+  
+  // Add front wall
   std::vector<double> wall_pos = table_pos;
   std::vector<double> wall_dim = table_dim;
   wall_dim[0] = 0.2;	// 20cm
@@ -151,7 +118,37 @@ int main(int argc, char** argv)
   wall_pos[0] += table_dim[0]/2;	// superimposes a bit with the table, not an issue
   wall_pos[2] += table_dim[2]/2;
   
-  addBoxObst("human_wall", wall_pos, wall_dim);
+  collision_objects.push_back(genBoxObst(move_group_interface, "front_wall", wall_pos, wall_dim));
+  
+  // Add side-wall
+  std::vector<double> side_wall_pos = table_pos;
+  std::vector<double> side_wall_dim = table_dim;
+  side_wall_dim[1] = 0.2;	// 20cm
+  side_wall_dim[2] = 2*table_dim[2];
+  side_wall_pos[1] += (1-2*(int)(ARM=="right"))*(table_dim[1]/2.0 + side_wall_dim[1]/2.0);	// superimposes a bit with the table, not an issue
+  side_wall_pos[2] += table_dim[2]/2;
+  
+  collision_objects.push_back(genBoxObst(move_group_interface, std::string(ARM+"_side_wall"), side_wall_pos, side_wall_dim));
+  
+  
+  // Now, let's add the "static" collision objects into the world
+  // (using a vector that could contain additional objects)
+  
+  /*	NOTE: there's a convenient "setWorkspace()" func, but it turns out its supposed
+  					to be used with mobile robots only, not high-dof arms.
+ 	*/
+  planning_scene_interface->applyCollisionObjects(collision_objects);
+  
+  
+  // Generate fictious obstacles to force the arm to stay far from the table
+  std::vector<double> dyn_pos = table_pos;
+  std::vector<double> dyn_dim = table_dim;
+  dyn_dim[1] = table_dim[1]/2.0;
+  dyn_dim[2] = 0.26;
+  dyn_pos[1] += (1-2*(int)(ARM=="right"))*table_dim[1]/4.0;	// select the correct half-table
+  dyn_pos[2] += table_dim[2]/2.0;	// superimposes a bit with the table, not an issue
+  									
+	half_table_CO = genBoxObst(move_group_interface, std::string(ARM+"_half_table"), dyn_pos, dyn_dim);
   
   fsm_ = std::make_shared<FSM>(
   						std::make_shared<ros::NodeHandle>(node_handle),
@@ -159,9 +156,10 @@ int main(int argc, char** argv)
 							move_group_interface,
 							planning_scene_interface
 						);
-  fsm_->setPickHeight(table_pos[2]+table_dim[2]/2+0.15); //< 15cm over the table
+  fsm_->setPickHeight(table_pos[2]+table_dim[2]/2.0+0.15); //< 15cm over the table
   fsm_->setBlockDest(block_dest);
   fsm_->setRestPose(baxter_rest_pose_);
+  fsm_->setDynamicObst(half_table_CO);
   
  // ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
   

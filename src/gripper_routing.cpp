@@ -12,7 +12,7 @@ void routeCllbck(const human_baxter_collaboration::BaxterGripperOpenConstPtr& ms
 	control_msgs::GripperCommandActionGoal out_msg;
 	
 	out_msg.goal.command.position = msg->open_gripper ? 100.0 : 0.0;
-	//pub_->publish(out_msg);
+	pub_->publish(out_msg);
 
 }
 
@@ -37,9 +37,9 @@ int main(int argc, char** argv)
 								std::bind(routeCllbck, std::placeholders::_1, route_pubR);
 								
 								
-	ros::Subscriber local_clientL = node_handle.subscribe<human_baxter_collaboration::BaxterGripperOpen>("/baxter/end_effector/left_gripper/gripper_open", 1 ,
+	ros::Subscriber local_clientL = node_handle.subscribe<human_baxter_collaboration::BaxterGripperOpen>("robot/limb/left/left_gripper", 1 ,
 																	leftCllbck);
-	ros::Subscriber local_clientR = node_handle.subscribe<human_baxter_collaboration::BaxterGripperOpen>("/baxter/end_effector/right_gripper/gripper_open", 1 ,
+	ros::Subscriber local_clientR = node_handle.subscribe<human_baxter_collaboration::BaxterGripperOpen>("robot/limb/right/right_gripper", 1 ,
 																	rightCllbck);
 
 

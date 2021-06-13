@@ -32,7 +32,8 @@ class FSM{
 				);
 		void setPickHeight(double n_height);
 		void setBlockDest(std::vector<double> block_dest);
-		void setRestPose(geometry_msgs::Pose rest_pose);
+		void setRestPose(std::vector<double> rest_pose);
+		void setDynamicObst(moveit_msgs::CollisionObject dynamic_obst);
 		void init();
 
 	private:
@@ -43,7 +44,12 @@ class FSM{
 		void setBlockGrasped(std::string name, bool grasp);
 		void gripperOpen(bool open);
 		
+		void applyDynamicCollisionObjects();
+		void removeDynamicCollisionObjects();
+		
+		bool generatePlan(std::vector<double> joint_target);
 		bool generatePlan			(	geometry_msgs::Pose target_pose);
+		bool computeTraj(moveit_msgs::RobotTrajectory& traj);
 		bool generateCartesian(	geometry_msgs::Pose mid_pose, 
 														geometry_msgs::Pose target_pose);
 		
@@ -71,7 +77,8 @@ class FSM{
 		geometry_msgs::Pose current_pose;
 		geometry_msgs::Pose goal_pose;
 		geometry_msgs::Pose BLOCK_DEST_;
-		geometry_msgs::Pose baxter_rest_pose_;
+		std::vector<double> baxter_rest_pose_;
+  	std::vector<moveit_msgs::CollisionObject> dynamic_obst;
 		const double maxInterBlockDist = 0.01;
 		double pick_height;
 		geometry_msgs::Point block_grasp_offset_;

@@ -33,7 +33,9 @@ FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
   						);
   gripper_pub = std::make_shared<ros::Publisher>
   						(node_handle->advertise<human_baxter_collaboration::BaxterGripperOpen>
-  							(std::string("/baxter/end_effector/"+ARM+"_gripper/gripper_open"), 1000)
+  							//(std::string("baxter/end_effector/"+ARM+"_gripper/gripper_open"), 1000)
+  							(std::string("robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000)
+  							
   						);
   
   // WARN: do not set 1 as subscriber queue dimension or you could lose the message, since it could 
@@ -61,7 +63,8 @@ void FSM::init()
 	ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
 }
 
-void FSM::setPickHeight(double n_height){
+void FSM::setPickHeight(double n_height)
+{
 	if (n_height <= 0.0){	throw std::invalid_argument("Expected height > 0.0"); }
 	pick_height = n_height;
 }
@@ -75,13 +78,17 @@ void FSM::setBlockDest(std::vector<double> block_dest)
 	BLOCK_DEST_.orientation.y = 1;
 }
 
-void FSM::setRestPose(geometry_msgs::Pose rest_pose){
+void FSM::setRestPose(std::vector<double> rest_pose)
+{
 		baxter_rest_pose_ = rest_pose;
 }
 
-template <typename T> int sgn(T val) {
-    return (T(0) < val) - (val < T(0));
+void FSM::setDynamicObst(moveit_msgs::CollisionObject dynamic_obst)
+{
+	this->dynamic_obst.push_back(dynamic_obst);
 }
+
+
 void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 	tf2::Quaternion q_orig, q_goal, q_rel, q_inv;
 	tf2::convert(*goal_orientation, q_goal);
@@ -174,12 +181,38 @@ void FSM::setBlockGrasped(std::string name, bool grasp){
 /*	--------------	*/
 /*	-- PLANNING --	*/
 
+
+
+bool FSM::generatePlan(std::vector<double> joint_target)
+{
+
+	move_group_interface->setJointValueTarget(joint_target);
+  move_group_interface->setGoalTolerance(0.005);
+  
+	ROS_DEBUG("PLANNING TO POSE EXECUTED");
+	moveit_msgs::RobotTrajectory traj;
+	bool succ = computeTraj(traj);
+	trajectory = std::make_shared<moveit_msgs::RobotTrajectory>(traj);
+	
+  return succ;
+}
 bool FSM::generatePlan(	geometry_msgs::Pose target_pose)
 {
 
 	move_group_interface->setPoseTarget(target_pose);
   move_group_interface->setGoalTolerance(0.005);
-  int attempt = 0;
+  
+	ROS_DEBUG("PLANNING TO POSE EXECUTED");
+	moveit_msgs::RobotTrajectory traj;
+	bool succ = computeTraj(traj);
+	trajectory = std::make_shared<moveit_msgs::RobotTrajectory>(traj);
+	
+  return succ;
+}
+
+bool FSM::computeTraj(moveit_msgs::RobotTrajectory& traj)
+{
+	int attempt = 0;
   const int max_attempts = 10;
   // Now, we call the planner to compute the plan and visualize it.
   // Note that we are just planning, not asking move_group_interface
@@ -197,12 +230,9 @@ bool FSM::generatePlan(	geometry_msgs::Pose target_pose)
 	if (attempt >= max_attempts){
 		return false;
 	}
+	traj = my_plan.trajectory_;
 	
-	ROS_DEBUG("PLANNING EXECUTED");
-	// move_group_interface->execute(my_plan);
-	trajectory = std::make_shared<moveit_msgs::RobotTrajectory>(my_plan.trajectory_);
-	
-  return true;
+	return true;
 }
 
 bool FSM::generateCartesian(geometry_msgs::Pose mid_pose, geometry_msgs::Pose target_pose)
@@ -223,6 +253,26 @@ bool FSM::generateCartesian(geometry_msgs::Pose mid_pose, geometry_msgs::Pose ta
   }
   trajectory = std::make_shared<moveit_msgs::RobotTrajectory>(c_trajectory);
   return true;
+}
+
+void FSM::applyDynamicCollisionObjects()
+{
+	if (dynamic_obst.empty()) return;
+	planning_scene_interface->applyCollisionObjects(dynamic_obst);
+}
+void FSM::removeDynamicCollisionObjects()
+{
+	std::vector<std::string>	names;
+	
+	if (dynamic_obst.empty()) return;
+	for(auto cb : dynamic_obst)
+	{
+		names.push_back(cb.id);
+		ROS_DEBUG("Asking to remove %s", cb.id.c_str());
+	}
+	
+	planning_scene_interface->removeCollisionObjects(names);
+
 }
 
 /*	--------------	*/
@@ -320,7 +370,11 @@ state_t FSM::placeBlue()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 	
-	return generatePlan(goal_pose) ? START : ERR;	//< the gripper will open in START			
+	applyDynamicCollisionObjects();
+	state_t succ = generatePlan(goal_pose) ? START : ERR;
+	// the removal is Asynchronous, test if it causes problems
+	removeDynamicCollisionObjects(); //< remove it asap since its async
+	return succ;	//< the gripper will open in START			
 }
 
 state_t FSM::removeRed()
@@ -337,8 +391,11 @@ state_t FSM::removeRed()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 			
-	 // plan and publish it
-	return generatePlan(goal_pose) ? START : ERR;	//< the gripper will open in START	
+	applyDynamicCollisionObjects();
+	state_t succ = generatePlan(goal_pose) ? START : ERR;
+	// the removal is Asynchronous, test if it causes problems
+	removeDynamicCollisionObjects();
+	return succ;	//< the gripper will open in START	
 }
 
 state_t	FSM::rest()

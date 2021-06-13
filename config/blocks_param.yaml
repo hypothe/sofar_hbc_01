@@ -12,5 +12,6 @@ table_dim:  [0.6, 2.0, 0.775]
 #MiddlePlacementN: [0.74, 0.0, 0.825]
 #Bluebox:          [0.668, 0.608, 0.801]
 
-block_dest_left:  [0.668, 0.608, 0.801] #Bluebox
-block_dest_right: [0.74, 0.0, 0.825]    #MiddlePlacementN
+# here also accounting for lower real table
+block_dest_left:  [0.668, 0.608, 0.80] #Bluebox
+block_dest_right: [0.74, 0.0, 0.80]    #MiddlePlacementN
