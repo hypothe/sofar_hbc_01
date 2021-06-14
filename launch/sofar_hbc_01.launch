@@ -1,12 +1,16 @@
 <?xml version="1.0"?>
 <launch>
 		<!--env name="ROSCONSOLE_CONFIG_FILE" value="$(find sofar_hbc_01)/config/console.config" /-->
-    <node name="tf_server" pkg="sofar_hbc_01" type="tf_server" args="--wait"/> 
-
+    <node name="blocks_server" pkg="sofar_hbc_01" type="blocks_server" args="--wait"/> 
     <rosparam file="$(find sofar_hbc_01)/config/blocks_param.yaml" command="load"/>
+    
+    <param name="baxter_description"
+      command="$(find xacro)/xacro $(find baxter_description)/urdf/baxter.urdf.xacro" />
+    
+    <param name="human_description" command="$(find xacro)/xacro $(find sofar_hbc_01)/urdf/human.urdf.xacro"/>
     <node name="closest_block" pkg="sofar_hbc_01" type="closest_block" output="screen" args="--wait" />
     
-    <node name="empty_pos_server1" pkg="sofar_hbc_01" type="empty_pos_server1" output="screen" args="--wait" />
+    <node name="empty_pos_server" pkg="sofar_hbc_01" type="empty_pos_server" output="screen" args="--wait" />
     
     <node name="finite_state_machine_left" pkg="sofar_hbc_01" type="finite_state_machine" args="--wait" output="screen" respawn="false" >
     <param name="~arm" value="left"/>	
@@ -14,9 +18,4 @@
     <node name="finite_state_machine_right" pkg="sofar_hbc_01" type="finite_state_machine" args="--wait" output="screen" respawn="false" >
     <param name="~arm" value="right"/>	
     </node>
-    
-    <!--node name="start_baxter_routine" pkg="sofar_hbc_01" type="start_baxter_routine" output="screen" args="- -wait" /-->
-    
-    
-    <!--include file="$(find human_baxter_collaboration)/launch/human_baxter_collaboration.launch" /-->
 </launch>

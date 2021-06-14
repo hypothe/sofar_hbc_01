@@ -13,7 +13,7 @@
 #include "sofar_hbc_01/BlocksPoses.h"
 #include "sofar_hbc_01/utils.h"
 
-const double max_dist = 0.04;
+double max_dist = 0.04;
 
 ros::ServiceClient client_blocks_tf;
 	std::vector<geometry_msgs::Point> shift;
@@ -24,7 +24,6 @@ double dist2(geometry_msgs::Pose pose1, geometry_msgs::Pose pose2){
 }
 
 bool posCllbck(sofar_hbc_01::ClosestEmptySpace::Request &req, sofar_hbc_01::ClosestEmptySpace::Response &res){
-	ROS_DEBUG("EMPTY SERVER CALLBACK");
 	sofar_hbc_01::BlocksPoses bp;
 	client_blocks_tf.call(bp);
 	
@@ -37,7 +36,7 @@ bool posCllbck(sofar_hbc_01::ClosestEmptySpace::Request &req, sofar_hbc_01::Clos
 	for(auto s : shift){
 		cell.position.x = req.eef_pose.position.x + s.x;
 		cell.position.y = req.eef_pose.position.y + s.y;
-		ROS_INFO("CELL_POS X(%lf) Y(%lf) Z(%lf)", cell.position.x,
+		ROS_DEBUG("CELL_POS X(%lf) Y(%lf) Z(%lf)", cell.position.x,
 																							cell.position.y,
 																							cell.position.z);
 		
@@ -66,13 +65,19 @@ int main(int argc, char** argv)
   ros::NodeHandle node_handle;
 
  	// service that gets one EEF pose and returns the pose of the block closest to it
- 	
+ 	double blocks_dim = 0.05;
+ 	if(!ros::param::get("blocks_dim", blocks_dim)){	ROS_ERROR("No parameter named 'blocks_dim' found");	}
+ 	max_dist = blocks_dim;
  	//create the vector with the 9 cell
 	geometry_msgs::Point point;
-	for(int j = 1; j >= -1; j--){
-		for(int i = -1; i <= 1; i++){
-			point.x = 0.05*i;
-			point.y = 0.05*j;
+	point.x = 0.0; point.y = 0.0;
+	shift.push_back(point);
+	
+	for(int i = -1; i <= 1; i++){
+		for(int j = 1; j >= -1; j--){
+			if (i==0 && j==0) continue;
+			point.x = (blocks_dim+0.005)*i;
+			point.y = (blocks_dim+0.005)*j;
 			shift.push_back(point);
 		}
 	}

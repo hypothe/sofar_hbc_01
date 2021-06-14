@@ -6,6 +6,9 @@
 #include <stdexcept>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 
+#include <cstdlib>
+#include <ctime>
+
 FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
 					std::string ARM,
 					std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,
@@ -33,7 +36,9 @@ FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
   						);
   gripper_pub = std::make_shared<ros::Publisher>
   						(node_handle->advertise<human_baxter_collaboration::BaxterGripperOpen>
-  							(std::string("/robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000)
+  							//(std::string("baxter/end_effector/"+ARM+"_gripper/gripper_open"), 1000)
+  							(std::string("robot/limb/"+ARM+"/"+ARM+"_gripper"), 1000)
+  							
   						);
   
   // WARN: do not set 1 as subscriber queue dimension or you could lose the message, since it could 
@@ -49,6 +54,14 @@ FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
   							(node_handle->serviceClient<sofar_hbc_01::ClosestEmptySpace>
   								("/empty_pos")
   							);
+  client_cd = std::make_shared<ros::ServiceClient>
+  							(node_handle->serviceClient<sofar_hbc_01::CollisionDetectionToggle>
+  								("/baxter/collision_detection/toggle")
+  							);
+  
+	collision_result_srv = std::make_shared<ros::ServiceServer>(node_handle->advertiseService(std::string("/baxter/collision_detection/"+ARM+"/result"), &FSM::collisionPolicy, this));
+    							
+  
   FSM_clock = node_handle->createTimer(ros::Duration(1.0), &FSM::clock_Cllbck, this, false, false);
 }
 // we need the publisher and the two clients
@@ -59,9 +72,11 @@ void FSM::init()
 	FSM_clock.start();
 	evolve = true;
 	ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
+	std::srand(std::time(nullptr));
 }
 
-void FSM::setPickHeight(double n_height){
+void FSM::setPickHeight(double n_height)
+{
 	if (n_height <= 0.0){	throw std::invalid_argument("Expected height > 0.0"); }
 	pick_height = n_height;
 }
@@ -75,13 +90,17 @@ void FSM::setBlockDest(std::vector<double> block_dest)
 	BLOCK_DEST_.orientation.y = 1;
 }
 
-void FSM::setRestPose(geometry_msgs::Pose rest_pose){
+void FSM::setRestPose(std::vector<double> rest_pose)
+{
 		baxter_rest_pose_ = rest_pose;
 }
 
-template <typename T> int sgn(T val) {
-    return (T(0) < val) - (val < T(0));
+void FSM::setDynamicObst(moveit_msgs::CollisionObject dynamic_obst)
+{
+	this->dynamic_obst.push_back(dynamic_obst);
 }
+
+
 void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 	tf2::Quaternion q_orig, q_goal, q_rel, q_inv;
 	tf2::convert(*goal_orientation, q_goal);
@@ -112,7 +131,7 @@ void FSM::graspQuat(geometry_msgs::Quaternion* goal_orientation){
 
 	tf2::Matrix3x3 mat_g(q_goal);
 	mat_g.getRPY(r,p,y);
-	ROS_DEBUG("%s GOALEy: %lf", ARM.c_str(), y*180.0/M_PI);
+	ROS_DEBUG("%s GOALy: %lf", ARM.c_str(), y*180.0/M_PI);
 	q_goal.setRPY(r, 0.0, y);
 	q_goal.normalize();
 	
@@ -150,6 +169,17 @@ double FSM::getClosestBlock(geometry_msgs::Pose current_pose){
 	
 	return dist3(current_pose, block->getPose());
 }
+
+void FSM::gripperOpen(bool open)
+{
+	human_baxter_collaboration::BaxterGripperOpen grip_msg;
+	
+	if (block!=nullptr){	setBlockGrasped(block->getName(), !open);	}
+	grip_msg.open_gripper = open;
+	gripper_pub->publish(grip_msg);
+}
+
+
 void FSM::setBlockGrasped(std::string name, bool grasp){
 	std::map<std::string, bool> grasped;
 	
@@ -164,12 +194,38 @@ void FSM::setBlockGrasped(std::string name, bool grasp){
 /*	--------------	*/
 /*	-- PLANNING --	*/
 
+
+
+bool FSM::generatePlan(std::vector<double> joint_target)
+{
+
+	move_group_interface->setJointValueTarget(joint_target);
+  move_group_interface->setGoalTolerance(0.005);
+  
+	ROS_DEBUG("PLANNING TO POSE EXECUTED");
+	moveit_msgs::RobotTrajectory traj;
+	bool succ = computeTraj(traj);
+	trajectory = std::make_shared<moveit_msgs::RobotTrajectory>(traj);
+	
+  return succ;
+}
 bool FSM::generatePlan(	geometry_msgs::Pose target_pose)
 {
 
 	move_group_interface->setPoseTarget(target_pose);
   move_group_interface->setGoalTolerance(0.005);
-  int attempt = 0;
+  
+	ROS_DEBUG("PLANNING TO POSE EXECUTED");
+	moveit_msgs::RobotTrajectory traj;
+	bool succ = computeTraj(traj);
+	trajectory = std::make_shared<moveit_msgs::RobotTrajectory>(traj);
+	
+  return succ;
+}
+
+bool FSM::computeTraj(moveit_msgs::RobotTrajectory& traj)
+{
+	int attempt = 0;
   const int max_attempts = 10;
   // Now, we call the planner to compute the plan and visualize it.
   // Note that we are just planning, not asking move_group_interface
@@ -178,21 +234,23 @@ bool FSM::generatePlan(	geometry_msgs::Pose target_pose)
   
   bool success = false;
   
+	applyDynamicCollisionObjects();
+	
   while (!success && attempt < max_attempts){
   	success = (move_group_interface->plan(my_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
   	ROS_INFO("Plan for pose goal %s %s", ARM.c_str(), success ? "" : "FAILED");
   	ros::Duration(1.0).sleep();
   	attempt++;
   }
+  
+	removeDynamicCollisionObjects(); //< remove it asap since its async
+	
 	if (attempt >= max_attempts){
 		return false;
 	}
+	traj = my_plan.trajectory_;
 	
-	ROS_DEBUG("PLANNING EXECUTED");
-	// move_group_interface->execute(my_plan);
-	trajectory = std::make_shared<moveit_msgs::RobotTrajectory>(my_plan.trajectory_);
-	
-  return true;
+	return true;
 }
 
 bool FSM::generateCartesian(geometry_msgs::Pose mid_pose, geometry_msgs::Pose target_pose)
@@ -215,18 +273,37 @@ bool FSM::generateCartesian(geometry_msgs::Pose mid_pose, geometry_msgs::Pose ta
   return true;
 }
 
+void FSM::applyDynamicCollisionObjects()
+{
+	if (dynamic_obst.empty()) return;
+	planning_scene_interface->applyCollisionObjects(dynamic_obst);
+}
+void FSM::removeDynamicCollisionObjects()
+{
+	std::vector<std::string>	names;
+	
+	if (dynamic_obst.empty()) return;
+	for(auto cb : dynamic_obst)
+	{
+		names.push_back(cb.id);
+		ROS_DEBUG("Asking to remove %s", cb.id.c_str());
+	}
+	
+	planning_scene_interface->removeCollisionObjects(names);
+
+}
+
+
 /*	--------------	*/
 /*	--- STATE ----	*/
 
 state_t FSM::start()
 {
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	
 	if (block != nullptr){
-		grip_msg.open_gripper = true;
-		gripper_pub->publish(grip_msg);
-		ros::Duration(1.0).sleep();
-		setBlockGrasped(block->getName(), false);	
+		gripperOpen(true);
+		ros::Duration(0.3).sleep();
+		// setBlockGrasped(block->getName(), false);	
 	}
 	block = nullptr;
 	
@@ -236,9 +313,7 @@ state_t FSM::start()
 
 state_t FSM::reachBlock()
 {
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
-	grip_msg.open_gripper = false;
-	gripper_pub->publish(grip_msg);
+	gripperOpen(false);
 	if (getClosestBlock(current_pose) < 0){
 	// if call returns negative means no obj was retrieved
 	// the table is shy of blue blocks
@@ -263,14 +338,12 @@ state_t FSM::pickBlock()
 	
 	// When calling this foo perform the "get closest block" and, if it differs
 	// from the previous one, go to REACH (looping?)
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	if (block == nullptr){	return ERR;	}
 	
-	setBlockGrasped(block->getName(), true);  //< technically not grasped yet,
+	// setBlockGrasped(block->getName(), true);  //< technically not grasped yet,
 																						//	but setting this here makes sense
 	
-	grip_msg.open_gripper = true;
-	gripper_pub->publish(grip_msg);
+	gripperOpen(true);
 			
 			// go down to the block, being sure to correctly orient the eef
 	goal_pose = block->getPose();
@@ -286,12 +359,10 @@ state_t FSM::pickBlock()
 
 state_t FSM::raiseBlock()
 {
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	if (block == nullptr){
 		return ERR;
 	}
-	grip_msg.open_gripper = false;
-	gripper_pub->publish(grip_msg);
+	gripperOpen(false);
 	
 	ros::Duration(0.5).sleep();	//< here as well, we assume they have time to close
 	
@@ -318,7 +389,11 @@ state_t FSM::placeBlue()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 	
-	return generatePlan(goal_pose) ? START : ERR;	//< the gripper will open in START			
+	// applyDynamicCollisionObjects();
+	return generatePlan(goal_pose) ? START : ERR;
+	// the removal is Asynchronous, test if it causes problems
+	// removeDynamicCollisionObjects(); //< remove it asap since its async
+	//< the gripper will open in START			
 }
 
 state_t FSM::removeRed()
@@ -335,28 +410,42 @@ state_t FSM::removeRed()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 			
-	 // plan and publish it
-	return generatePlan(goal_pose) ? START : ERR;	//< the gripper will open in START	
+	// applyDynamicCollisionObjects();
+	return generatePlan(goal_pose) ? START : ERR;
+	// the removal is Asynchronous, test if it causes problems
+	// removeDynamicCollisionObjects();
+	// return succ;	//< the gripper will open in START	
 }
 
 state_t	FSM::rest()
 {
 	// open the gripper to release the obj (if any)
-	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	if (block != nullptr)
 	{
-		setBlockGrasped(block->getName(), false);
-		grip_msg.open_gripper = true;
-		gripper_pub->publish(grip_msg);
-		ros::Duration(1.0).sleep();
-		BAXTER_ATTEMPTS_ = 0;
+		// setBlockGrasped(block->getName(), false);
+		gripperOpen(true);
+		block = nullptr;
+		ros::Duration(0.3).sleep();
+		// BAXTER_ATTEMPTS_ = 0;
 	}
-		
+	
+	state_t succ = START;	
 	if (BAXTER_ATTEMPTS_ == 0)
 	{
 		generatePlan(baxter_rest_pose_);
+		succ = IDLE;
+		ROS_WARN("BAXTER_FSM_%s: GOING BACK TO REST POSE", ARM.c_str());
+		/*	This wait is mainly used in the case of rest_pose
+				after a collision is detected
+			*/
+		double wait = 3.0 * std::rand()/RAND_MAX;
+		ros::Duration(wait).sleep();
 	}
-	return ++BAXTER_ATTEMPTS_ <= MAX_BAXTER_ATTEMPTS_ ? START : END;
+	
+	BAXTER_ATTEMPTS_++;
+	if (BAXTER_ATTEMPTS_ >= MAX_BAXTER_ATTEMPTS_){	succ = END;	}
+	
+	return succ;
 }
 
 
@@ -374,7 +463,8 @@ bool FSM::stateEvolution(){
 		case REACH:
 		{
   		ROS_INFO("BAXTER_FSM_%s: REACH", ARM.c_str());
-			
+			if (block != nullptr){gripperOpen(true);} //< this means it arrived here from an error stateEvolution
+			// eg. collision. Release each "virtually-held" block before starting.
 			next_state = FSM::reachBlock();
 			
 			if (next_state == IDLE){
@@ -385,15 +475,14 @@ bool FSM::stateEvolution(){
 				ROS_INFO("BAXTER_FSM_%s: ERROR DURING REACH", ARM.c_str());
 				break;
 			}
-			// baxter_at_rest_ = false; //< this is incredibly ugly!
   		ROS_INFO("\t BLOCK FOUND: %s", block->getName().c_str());
-			BAXTER_ATTEMPTS_ = 0;
 			auto_evolve = false;
 			
 			break;
 		}
 		case PICK:
 		{
+  		ROS_INFO("BAXTER_FSM_%s: PICK", ARM.c_str());
 			geometry_msgs::Pose prev_block_pose;
 			// the block pose is saved since here below we search for
 			// a possibly closer block
@@ -410,10 +499,10 @@ bool FSM::stateEvolution(){
 				*/
 			if (dist3(prev_block_pose, block->getPose()) > maxInterBlockDist){
 				next_state = REACH;
+				block = nullptr;
 				break;
 			}
 			
-  		ROS_INFO("BAXTER_FSM_%s: PICK", ARM.c_str());
 			next_state = FSM::pickBlock();
 			
 			if (next_state == ERR){
@@ -454,6 +543,8 @@ bool FSM::stateEvolution(){
 			
   		ROS_INFO("\t BLOCK PLACED: %s", block->getName().c_str());
 			auto_evolve = false;
+			
+			BAXTER_ATTEMPTS_ = 0;
 			break;
 		}
 		case REMOVE_RED:
@@ -471,6 +562,8 @@ bool FSM::stateEvolution(){
 			 // plan and publish it
   		ROS_INFO("\t BLOCK MOVED: %s", block->getName().c_str());
 			auto_evolve = false;
+			
+			BAXTER_ATTEMPTS_ = 0;
 			break;
 		}
 		case END:
@@ -489,8 +582,10 @@ bool FSM::stateEvolution(){
 		}
 		case IDLE:
 		{
-			ROS_WARN("Going to rest state (%d)", BAXTER_ATTEMPTS_);
+			ROS_WARN("BAXTER_FSM_%s: Going to rest state (%d)", ARM.c_str(), BAXTER_ATTEMPTS_);
 			next_state = FSM::rest();
+			
+			if (next_state == IDLE){	auto_evolve = false;	}
 			// auto_evolve = true;	//< already true
 			break;
 		}
@@ -526,14 +621,54 @@ void FSM::clock_Cllbck(const ros::TimerEvent&)
 void FSM::trajectoryResult(const human_baxter_collaboration::BaxterResultTrajectory::ConstPtr& msg)
 {
 	if (msg->arm != ARM){ return; } // not meant for this node!
-	
+
 	ROS_DEBUG("BAXTER_FSM_%s: RECEIVED RESULT", ARM.c_str());
-	if (!msg->success){	
-		next_state = state;
-		ROS_WARN("Current trajectory interrupted, replanning.");
-	}	//< rollback
-	evolve = true;
+	
+	// setting always evolve = msg.succes might compromise
+	if (msg->success)
+	{
+		evolve = true;
+		// vvv	Reset collision detection, in case it was unset before	vvv
+		// TODO: inner state flag determining if the status is set to on or off,
+		// calling only if the status changed to narrow the bandwidth
+		sofar_hbc_01::CollisionDetectionToggle cd;
+		cd.request.arm = ARM;
+		cd.request.cd_on = true;
+		
+		client_cd->call(cd);
+	}
 }
+
+bool FSM::collisionPolicy(	sofar_hbc_01::CollisionDetectionResult::Request &req,
+											sofar_hbc_01::CollisionDetectionResult::Response &res)
+{
+	ROS_WARN("BAXTER_FSM_%s: Current trajectory interrupted, replanning %s", ARM.c_str(), req.severity=="HIGH"?"from scratch":"");
+	
+	if (req.severity == "HIGH")
+	{	
+		// TODO: figure out how to correctly recover from a collision
+		// next_state = state;
+		// For the moment simply go into ERR state
+		/*	In case of "major" collision go to start and replan from scratch	*/
+		next_state = ERR;
+		
+		res.cd_on = false;
+		
+		BAXTER_ATTEMPTS_ = 0;
+		
+		
+	}	//< rollback
+	else if (req.severity == "LOW")
+	{
+		/*	In case of "minor" collision just replan from here	*/
+		res.cd_on = true;
+		next_state = state;
+	}
+	evolve = true;
+	
+	return true;
+}
+
 
 // NOTE: theoretically, a lot of race conditions might appear with evolve, state, next_state
 // Nevertheless, due to how the state progression is designed, they should in the concrete case

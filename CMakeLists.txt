@@ -2,13 +2,29 @@ cmake_minimum_required(VERSION 3.0.2)
 project(sofar_hbc_01)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++11)
+# add_compile_options(-std=c++11)
+add_compile_options(-std=c++14)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 
+find_package(Eigen3 REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBFCL_PC REQUIRED fcl)
+set(LIBFCL_INCLUDE_DIRS ${LIBFCL_PC_INCLUDE_DIRS})
+# find *absolute* paths to LIBFCL_LIBRARIES
+set(LIBFCL_LIBRARIES)
+
+foreach(_lib ${LIBFCL_PC_LIBRARIES})
+  find_library(_lib_${_lib} ${_lib} HINTS ${LIBFCL_PC_LIBRARY_DIRS})
+  list(APPEND LIBFCL_LIBRARIES ${_lib_${_lib}})
+endforeach()
+
+
 find_package(catkin REQUIRED COMPONENTS
+	control_msgs
   moveit_msgs
   geometry_msgs
   sensor_msgs
@@ -18,6 +34,7 @@ find_package(catkin REQUIRED COMPONENTS
   human_baxter_collaboration
   tf2_geometry_msgs
   std_msgs
+  tf2_eigen
 )
 
 ## System dependencies are found with CMake's conventions
@@ -106,8 +123,8 @@ generate_messages(
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
-  CATKIN_DEPENDS moveit_msgs geometry_msgs sensor_msgs message_runtime
-#  DEPENDS system_lib
+  CATKIN_DEPENDS moveit_msgs geometry_msgs sensor_msgs message_runtime tf2_eigen
+  DEPENDS system_lib LIBFCL EIGEN3
 )
 
 ###########
@@ -121,12 +138,18 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
 )
+include_directories(
+  SYSTEM
+  ${LIBFCL_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+)
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
   src/Block.cpp
   src/utils.cpp
   src/FSM.cpp
+  src/Link.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
@@ -141,9 +164,11 @@ target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(closest_block src/closest_block.cpp)
 add_executable(finite_state_machine src/finite_state_machine.cpp)
-add_executable(tf_server src/tf_server.cpp)
-# add_executable(empty_pos_server src/tmp_empty_pos_server.cpp)
-add_executable(empty_pos_server1 src/checkboard_empty_pos_server.cpp)
+add_executable(blocks_server src/blocks_server.cpp)
+add_executable(empty_pos_server src/checkboard_empty_pos_server.cpp)
+add_executable(collision_detection src/collision_detection.cpp)
+add_executable(gripper_routing src/gripper_routing.cpp)
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -160,12 +185,19 @@ add_dependencies(closest_block
 add_dependencies(finite_state_machine
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
-add_dependencies(tf_server
+add_dependencies(blocks_server
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
-add_dependencies(empty_pos_server1
+add_dependencies(empty_pos_server
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
+add_dependencies(collision_detection
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
+add_dependencies(gripper_routing
+	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+)
+
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(closest_block
@@ -182,17 +214,29 @@ target_link_libraries(finite_state_machine
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(tf_server
+target_link_libraries(blocks_server
   ${PROJECT_NAME}
 )
-target_link_libraries(tf_server
+target_link_libraries(blocks_server
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(empty_pos_server1
+target_link_libraries(empty_pos_server
   ${PROJECT_NAME}
 )
-target_link_libraries(empty_pos_server1
+target_link_libraries(empty_pos_server
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(collision_detection
+  ${PROJECT_NAME}
+)
+target_link_libraries(collision_detection
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(gripper_routing
+  ${PROJECT_NAME}
+)
+target_link_libraries(gripper_routing
   ${catkin_LIBRARIES}
 )
 

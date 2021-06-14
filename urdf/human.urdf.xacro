@@ -1,0 +1,74 @@
+<?xml version="1.0" ?>
+<robot name="human" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <link name="hand_l">
+    <collision>
+      <geometry>
+        <cylinder length="0.20" radius="0.06"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="hand_r">
+    <collision>
+      <geometry>
+        <cylinder length="0.20" radius="0.06"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="lowerarm_l">
+    <collision>
+      <geometry>
+        <cylinder length="0.26" radius="0.06"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="lowerarm_r">
+    <collision>
+      <geometry>
+        <cylinder length="0.26" radius="0.06"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="upperarm_l">
+    <collision>
+      <geometry>
+        <cylinder length="0.30" radius="0.06"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="upperarm_r">
+    <collision>
+      <geometry>
+        <cylinder length="0.30" radius="0.06"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="spine" />
+
+  <joint name="wrist_l" type="continuous">
+    <parent link="lowerarm_l"/>
+    <child link="hand_l"/>
+  </joint>
+  <joint name="wrist_r" type="continuous">
+    <parent link="lowerarm_r"/>
+    <child link="hand_r"/>
+  </joint>
+  <joint name="elbow_l" type="continuous">
+    <parent link="upperarm_l"/>
+    <child link="lowerarm_l"/>
+  </joint>
+  <joint name="elbow_r" type="continuous">
+    <parent link="upperarm_r"/>
+    <child link="lowerarm_r"/>
+  </joint>
+
+  <joint name="shoulder_l" type="continuous">
+    <parent link="spine"/>
+    <child link="upperarm_l"/>
+  </joint>
+  <joint name="shoulder_r" type="continuous">
+    <parent link="spine"/>
+    <child link="upperarm_r"/>
+  </joint>
+  
+</robot>

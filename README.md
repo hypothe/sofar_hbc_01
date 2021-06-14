@@ -1,70 +1,84 @@
+# SofAR assignment - Human Robot Collaboration
 
-# Next steps
+> **Authors**: Marco Gabriele Fedozzi, Georgii Kurshakov, Laura Triglia
 
-## 1. tf_server
+This package contains part of the materials necessary to run the assignment for the *Software Architectures for Robotics* course of the Robotics Engineering/(J)EMARO MSc at [University of Genoa](https://courses.unige.it/10635).
 
-> **Priority:**		5/5  
-> **Complexity:** 	1/5
+A list of the other necessary packages are presented at the end of this document.
 
-reads from /tf topic and:
+# Compiling and Running
 
-1. publish msg with human tf 	(/tf/human) [from /tf , have "frame_id: world" and "children_frame_id:" to something beside "base", block ids and the like]
-2. publish msg with robot tf 	(/tf/baxter) [from /tf, have "frame_id:" different from "world" except for (frame_id: world; children_frame_id: base)]
-3. server for blocks tf 		(/tf/blocks) [from /tf, "frame_id: world" and "child_frame_id:" either a char, "Bluebox", "Redbox", "MiddlePlacement", "MiddlePlacementN"]
+After installing all the packages in a ROS workspace (*the project has been developed and tested in Noetic*) run
+```bash
+.../ros_ws$ catkin_make
+```
+**TWICE**, since one of the other legacy packages seems to have a dependancy issue and will throw a series of warning the first time. Ignore them, recompile, and if warnings or error still persist there might be something off with your configuration, be sure all packages are correctly installed and the ROS workspace sourced.
 
-## 2. check_collision
+## Baxter - Unity Simulation
 
-> **Priority:**		1/5  
-> **Complexity:** 	3/5
+First of all follow the steps presented at the **SofAR-Human-Robot-Collaboration** repository (link at the end) to set up the Unity Environment. Then pass to your ROS system for the following steps.
+A few components need to be run, so as many separate shells should be open at the same time:
 
-probably implements FCL interface (https://github.com/flexible-collision-library/fcl) (one for each arm)
+1. **Unity - ROS connection**
+```bash
+.../ros_ws$ roslaunch human_baxter_collaboration human_baxter_collaboration.launch
+```
+Wait for the green text to appear, then start the Unity simulation ('Play' button).
+This will initiate the connection between the simulation and the ROS environment.
 
-1. gather data from /tf/human -> make cylinders
-2. gather data from /tf/baxter -> make cylinders
-3. check collision
-4. if a collision is detected publish a msg on /baxter_moveit_stop_trajectory (modify the current msg by adding "str arm" as field).
+2. **Finite State Machine**
+```bash
+.../ros_ws$ roslaunch sofar_hbc_01 sofar_hbc_01.launch
+```
+Ignore the warnings, here as well ae simply due to legacy code. Once the systems starts running you can pass to the third (optional) phase.
 
-## 3. closest_block
+3. **Collision Detection** (optional)
+```bash
+.../ros_ws$ rosrun sofar_hbc_01 collision_detection
+```
+This will start the node responsible of tracking collisions (better said, distances) between Baxter and the human, as well as between the two Baxter arms, in real time.
+This node is not necessary, and has quite a few limitations:
+- the real Baxter has a low level controller that makes collisions between arms not possible. Here the detection is mainly used by the simulation, and to avoid such forced movements in the real robot;
+- no motion tracking is performed in the real scenario, hence the human tf's are only those simulated by the somewhat-limited human;
+- _collision detection_ does not mean _collision avoidance_: dynamic obstacles are not avoided and the plan is not modified at runtime. When a possible collision (_distance lower then threshold_) is detected, the ongoing trajectory is stopped (by sending a message to the simulation) and the FSM is informed of type (*severity*) of the collision.  
+a. **"LOW"** for human-robot collisions: being the human very mobile and relatively fast compared to the robot, the FSM simply stops and re-plans for the previous state  
+b. **"HIGH"**, for robot-robot collisions: the robot is slower, but it could repeat the same collision-prone movements if a simple replanning was asked. That's why in this case the FSM goes into the *ERROR STATE*, bringing the arms to their initial joint states, waiting for a random (thus different for each arm) amount of time before trying to re-plan from scratch.
 
-> **Priority:**		4/5  
-> **Complexity:** 	4/5
+## Real world test
 
-1. implement a server for "block_to_pick" request, with current eef pose (geometry_msgs::Pose) and arm (string)
-2. when the request is received it makes itself a request to /tf_server for /tf/blocks
-3. Remove from those blocks the one already placed in the Redbox and Bluebox (save them in the param server after their placement )
-4. check the closest block to the arm pose, between those in the correct half-table (depending on arm designed space)
-		Keep in mind that, in case the arm specified is the left one and a block is in the MiddlePlacementN (how to track that? Parameter Server?)
-		that block should take precedence; at the same time, if the blue block is obstructed by a red one, this should be removed first (but trying
-		to delay picking it, low priority).
+The implementation of the system in a real world test does follow almost entirely the same steps already presented, since the limited system we're gonna use does rely on the simulation for the entire sensing part (minus robot proprioception).
+Unity simulation should be launched as in the previous case. Remember to correctly export the ROS master IP and port that will be present in the local network.
+The steps are thus as follows:
 
-## 4. closest_empty_space
+1. **Unity - ROS connection**
+```bash
+.../ros_ws$ roslaunch human_baxter_collaboration human_baxter_collaboration.launch
+```
 
-> **Priority:**		3/5  
-> **Complexity:** 	3/5
+2. **Robot Controller**
+```bash
+.../ros_ws$ roslaunch sofar_hbc_01 joint_trajectory_client.launch
+```
+Forward the trajectories to the actual robot.
 
-1. implement a server for /empty_pos, with block_pos field (geometry_msgs::Pose)
-2. randomly sample a point around that pos in some way:
-	- to make things easy let's assume in a semi-circle: randomly select the radius between 5 and 10 cm and the angle between pi and 2*pi for
-	the blocks in the right side of the table (notice the world frame is oriented with x pointing from bxtr to the human, y to the left of bxtr, z up)
-	or between 0 and pi if it's in the left side (with this semi circle we are guaranteed to move the block away from the midpoint).
-3. if that position is unobstructed (no block is too close to it) return it, else go back to 4b.
-	- we can, as a further step, perhaps think about "smart storage" of the blocks in some structure that guarantees faster retrieval times for
-	checking distance relative to a query point. No idea about that for the moment, not really necessary right now.
-	
-## 5. FiniteStateMachine
+3. **Finite State Machine**
+```bash
+.../ros_ws$ roslaunch sofar_hbc_01 lab_sofar_hbc_01.launch
+```
+Launches a node which forwards the gripper commands to the robot, together with all the other nodes described.
 
-> **Priority:**		3/5  
-> **Complexity:** 	4/5
+4. **Collision Detection** (optional)
+```bash
+.../ros_ws$ rosrun sofar_hbc_01 collision_detection
+```
+Might be counterproductive in the real scenario, use with care.
 
-two of them, actually the same code but run as two different nodes with ARM as a parameter.
 
-1. **TODO:** fully fledged explanation of it
-2. **TODO:** on Unity side a message sbould be published once a trajectory has been terminated, so that the FSM waits for the current state to be executed before passing to the next one. Also, set a block as "delivered" on the parameter server, so that it will not be checked for ditance and occlusion by the other nodes.
+# Other resources
 
----
+| name          | link                                       | description                                  |
+| ---- 				    	| ---- 									                             | -----				                                    |
+| moveit_robots | https://github.com/hypothe/moveit_robots   | baxter config files for moveit (modified)    |
+| baxter        | https://github.com/RethinkRobotics/baxter  | baxter description and interfaces (install all of the presented packages) |
+| SofAR-Human-Robot-Collaboration | https://github.com/hypothe/SofAR-Human-Robot-Collaboration  | Unity connection (modified) |
 
-# Useful resources
-
-For the retrieval of the closest block to either the current eef pose or to a random empty spot we could improve performances with a [k-d-tree](https://en.wikipedia.org/wiki/K-d_tree); however, the gain in terms of performances at this scale could be negligible so a linear search should suffice for now. If there's time to refine the project consider this option.
-
-For collision checking see the tf tree with `rosrun rqt_tf_tree tqt_tf_tree`, we could probably care only for the links from "xxx_upper_forearm" downward (skipping also few links which only rotate wrt previous ones, eg grouping all hand joints together).
