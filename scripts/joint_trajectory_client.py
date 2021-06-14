@@ -98,8 +98,8 @@ def trajectory_callback(msg):
 	    	
 	    	traj = Trajectory(arm)
 	    	# Start with open gripper
-	    	if i == 0:
-	    		traj.open_gripper()
+	    	#if i == 0:
+	    	#	traj.open_gripper()
 	    		
 	    	rospy.on_shutdown(traj.stop)
 	    	# Command Current Joint Positions first
@@ -114,14 +114,14 @@ def trajectory_callback(msg):
 	    	traj.start()
 	    	traj.wait(t + 1)
 	    	# Close gripper on grasping
-	    	if i == close_gripper_idx:
-	    		rospy.sleep(1)
-	    		traj.close_gripper()
+	    	# if i == close_gripper_idx:
+	    	##	rospy.sleep(1)
+	    	##	traj.close_gripper()
 	    	# Reopen gripper on release
-	    	elif i == open_gripper_idx:
-	    		rospy.sleep(wait_before_opening)
-	    		traj.open_gripper()
-	    		rospy.sleep(1)
+	    	# elif i == open_gripper_idx:
+	    	##	rospy.sleep(wait_before_opening)
+	    	##	traj.open_gripper()
+	    	##	rospy.sleep(1)
 
 	    print("Joint Trajectory Action Complete")
     

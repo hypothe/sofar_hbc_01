@@ -33,3 +33,7 @@
 
 # Only local stuff
 *.lcl
+
+# test files
+
+test/
