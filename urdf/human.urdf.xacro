@@ -70,5 +70,5 @@
     <parent link="spine"/>
     <child link="upperarm_r"/>
   </joint>
-
+  
 </robot>
