@@ -162,6 +162,7 @@ void FSM::gripperOpen(bool open)
 {
 	human_baxter_collaboration::BaxterGripperOpen grip_msg;
 	
+	if (block!=nullptr){	setBlockGrasped(block->getName(), !open);	}
 	grip_msg.open_gripper = open;
 	gripper_pub->publish(grip_msg);
 }
@@ -284,7 +285,7 @@ state_t FSM::start()
 	if (block != nullptr){
 		gripperOpen(true);
 		ros::Duration(1.0).sleep();
-		setBlockGrasped(block->getName(), false);	
+		// setBlockGrasped(block->getName(), false);	
 	}
 	block = nullptr;
 	
@@ -321,7 +322,7 @@ state_t FSM::pickBlock()
 	// from the previous one, go to REACH (looping?)
 	if (block == nullptr){	return ERR;	}
 	
-	setBlockGrasped(block->getName(), true);  //< technically not grasped yet,
+	// setBlockGrasped(block->getName(), true);  //< technically not grasped yet,
 																						//	but setting this here makes sense
 	
 	gripperOpen(true);
@@ -403,10 +404,11 @@ state_t	FSM::rest()
 	// open the gripper to release the obj (if any)
 	if (block != nullptr)
 	{
-		setBlockGrasped(block->getName(), false);
+		// setBlockGrasped(block->getName(), false);
 		gripperOpen(true);
+		block = nullptr;
 		ros::Duration(1.0).sleep();
-		BAXTER_ATTEMPTS_ = 0;
+		// BAXTER_ATTEMPTS_ = 0;
 	}
 		
 	if (BAXTER_ATTEMPTS_ == 0)
@@ -431,7 +433,8 @@ bool FSM::stateEvolution(){
 		case REACH:
 		{
   		ROS_INFO("BAXTER_FSM_%s: REACH", ARM.c_str());
-			
+			if (block != nullptr){gripperOpen(true);} //< this means it arrived here from an error stateEvolution
+			// eg. collision. Release each "virtually-held" block before starting.
 			next_state = FSM::reachBlock();
 			
 			if (next_state == IDLE){
@@ -442,15 +445,14 @@ bool FSM::stateEvolution(){
 				ROS_INFO("BAXTER_FSM_%s: ERROR DURING REACH", ARM.c_str());
 				break;
 			}
-			// baxter_at_rest_ = false; //< this is incredibly ugly!
   		ROS_INFO("\t BLOCK FOUND: %s", block->getName().c_str());
-			BAXTER_ATTEMPTS_ = 0;
 			auto_evolve = false;
 			
 			break;
 		}
 		case PICK:
 		{
+  		ROS_INFO("BAXTER_FSM_%s: PICK", ARM.c_str());
 			geometry_msgs::Pose prev_block_pose;
 			// the block pose is saved since here below we search for
 			// a possibly closer block
@@ -467,10 +469,10 @@ bool FSM::stateEvolution(){
 				*/
 			if (dist3(prev_block_pose, block->getPose()) > maxInterBlockDist){
 				next_state = REACH;
+				block = nullptr;
 				break;
 			}
 			
-  		ROS_INFO("BAXTER_FSM_%s: PICK", ARM.c_str());
 			next_state = FSM::pickBlock();
 			
 			if (next_state == ERR){
@@ -511,6 +513,8 @@ bool FSM::stateEvolution(){
 			
   		ROS_INFO("\t BLOCK PLACED: %s", block->getName().c_str());
 			auto_evolve = false;
+			
+			BAXTER_ATTEMPTS_ = 0;
 			break;
 		}
 		case REMOVE_RED:
@@ -528,6 +532,8 @@ bool FSM::stateEvolution(){
 			 // plan and publish it
   		ROS_INFO("\t BLOCK MOVED: %s", block->getName().c_str());
 			auto_evolve = false;
+			
+			BAXTER_ATTEMPTS_ = 0;
 			break;
 		}
 		case END:
@@ -586,7 +592,10 @@ void FSM::trajectoryResult(const human_baxter_collaboration::BaxterResultTraject
 	
 	ROS_DEBUG("BAXTER_FSM_%s: RECEIVED RESULT", ARM.c_str());
 	if (!msg->success){	
+		// TODO: figure out how to correctly recover from a collision
 		next_state = state;
+		// For the moment simply go into ERR state
+		next_state = ERR;
 		ROS_WARN("Current trajectory interrupted, replanning.");
 	}	//< rollback
 	evolve = true;

@@ -170,7 +170,7 @@ add_executable(empty_pos_server1 src/checkboard_empty_pos_server.cpp)
 add_executable(collision_detection src/collision_detection.cpp)
 add_executable(gripper_routing src/gripper_routing.cpp)
 
-add_executable(fcl_test test/fcl_test.cpp)
+# add_executable(fcl_test test/fcl_test.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -201,9 +201,9 @@ add_dependencies(gripper_routing
 )
 
 
-add_dependencies(fcl_test
-	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
-)
+# add_dependencies(fcl_test
+#	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
+#)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(closest_block
@@ -246,12 +246,12 @@ target_link_libraries(gripper_routing
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(fcl_test
-  ${PROJECT_NAME}
-)
-target_link_libraries(fcl_test
-  ${catkin_LIBRARIES}
-)
+#target_link_libraries(fcl_test
+#  ${PROJECT_NAME}
+#)
+#target_link_libraries(fcl_test
+#  ${catkin_LIBRARIES}
+#)
 
 #############
 ## Install ##

@@ -24,7 +24,6 @@ double dist2(geometry_msgs::Pose pose1, geometry_msgs::Pose pose2){
 }
 
 bool posCllbck(sofar_hbc_01::ClosestEmptySpace::Request &req, sofar_hbc_01::ClosestEmptySpace::Response &res){
-	ROS_DEBUG("EMPTY SERVER CALLBACK");
 	sofar_hbc_01::BlocksPoses bp;
 	client_blocks_tf.call(bp);
 	
@@ -37,7 +36,7 @@ bool posCllbck(sofar_hbc_01::ClosestEmptySpace::Request &req, sofar_hbc_01::Clos
 	for(auto s : shift){
 		cell.position.x = req.eef_pose.position.x + s.x;
 		cell.position.y = req.eef_pose.position.y + s.y;
-		ROS_INFO("CELL_POS X(%lf) Y(%lf) Z(%lf)", cell.position.x,
+		ROS_DEBUG("CELL_POS X(%lf) Y(%lf) Z(%lf)", cell.position.x,
 																							cell.position.y,
 																							cell.position.z);
 		

@@ -13,6 +13,8 @@
 #include <moveit_msgs/AttachedCollisionObject.h>
 #include <moveit_msgs/CollisionObject.h>
 
+#include "fcl/fcl.h"
+
 template <typename T> int sgn(T val)
 {
     return (T(0) < val) - (val < T(0));
@@ -22,7 +24,7 @@ void waitForServices (std::vector<std::shared_ptr<ros::ServiceClient> > clients)
 
 double dist2(geometry_msgs::Pose pose1, geometry_msgs::Pose pose2);
 double dist3(geometry_msgs::Pose pose1, geometry_msgs::Pose pose2);
-
+double dist3(fcl::Vector3f vec1, fcl::Vector3f vec2);
 
 moveit_msgs::CollisionObject genBoxObst(
 								std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,

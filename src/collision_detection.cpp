@@ -1,6 +1,7 @@
 /* Author: Marco G. Fedozzi */
 
 #include "ros/ros.h"
+#include <ros/console.h>
 
 #include <memory>
 
@@ -19,8 +20,9 @@
 #include "urdf/model.h"
 
 #include "sofar_hbc_01/Link.h"
+#include "sofar_hbc_01/utils.h"
+#include "human_baxter_collaboration/BaxterStopTrajectory.h"
 
-//using fcl::Vector3;
 using Real = typename fcl::constants<double>::Real;
 
 const std::string human_urdf = std::string("human_description");
@@ -30,12 +32,14 @@ const double check_period_ = 0.2;
 const double bxtr_wrist_ext_len = 0.2; //< model the joints after the wrist only with one joint but longer
 
 tf2_ros::Buffer tfBuffer;
-tf2_ros::TransformListener tfListener(tfBuffer);
+std::shared_ptr<tf2_ros::TransformListener> tfListener;
 
 std::map<std::string, Link> human_arms, bxtr_armL, bxtr_armR;
-const float human_bxtr_dist_th_ = 0.08; //< totally arbitratry for now;
-const float bxtr_bxtr_dist_th_ = 0.08; //< totally arbitratry for now;
+const float human_bxtr_dist_th_ = 0.07; //< totally arbitratry for now;
+const float bxtr_bxtr_dist_th_ = 0.9; //< totally arbitratry for now;
 std::unique_ptr<fcl::BroadPhaseCollisionManagerf> mngr_human, mngr_bxtrL, mngr_bxtrR;
+
+ros::Publisher stop_pub;
 
 void collisionCheck(const ros::TimerEvent&)
 {
@@ -47,12 +51,13 @@ void collisionCheck(const ros::TimerEvent&)
 		for (auto link : link_map)
 		{
 		  try{
-		    transformStamped = tfBuffer.lookupTransform(link.first, "world",
+		    transformStamped = tfBuffer.lookupTransform("world", link.first, 
 		                             ros::Time(0));
 		    pose.position.x = transformStamped.transform.translation.x;
 		    pose.position.y = transformStamped.transform.translation.y;
-		    pose.position.x = transformStamped.transform.translation.z;
+		    pose.position.z = transformStamped.transform.translation.z;
 		    pose.orientation = transformStamped.transform.rotation;
+		    		    
 		    link.second.setPose(pose);
 		    link.second.updateCollisionObject();
 		  }
@@ -63,26 +68,58 @@ void collisionCheck(const ros::TimerEvent&)
 		}
 	}
 	
+	
 	mngr_human->update();
 	mngr_bxtrL->update();
 	mngr_bxtrR->update();
 	
-	fcl::DefaultDistanceData<float> distance_data;
+	fcl::DefaultDistanceData<float> distance_data_hl, distance_data_hr,  distance_data_rl;
+	/*	DEBUG	
+	distance_data_hl.request.enable_nearest_points = true;
+	distance_data_hr.request.enable_nearest_points = true;
+	distance_data_rl.request.enable_nearest_points = true;
+		\DEBUG	*/
 	
-	mngr_human->distance(mngr_bxtrL.get(), &distance_data, fcl::DefaultDistanceFunction);
-	if (distance_data.result.min_distance < human_bxtr_dist_th_)
+	mngr_human->distance(mngr_bxtrL.get(), &distance_data_hl, fcl::DefaultDistanceFunction);
+	if (distance_data_hl.result.min_distance < human_bxtr_dist_th_)
 	{
-		ROS_ERROR("HUMAN - BAXTER_LEFT_ARM COLLISION INCOMING");
+		ROS_ERROR("HUMAN - BAXTER_LEFT_ARM COLLISION INCOMING %lf", distance_data_hl.result.min_distance);
+		/* DEBUG
+		fcl::Vector3f p1, p2;
+		p1 = distance_data_hl.result.nearest_points[0];
+		p2 = distance_data_hl.result.nearest_points[1];
+		ROS_DEBUG("TWO CLOSEST POINTS [%lf %lf  %lf], [%lf %lf  %lf]", p1[0], p1[1], p1[2],  p2[0], p2[1], p2[2]);
+			\DEBUG */
+			
+		// LEFT arm too close to human, interrupt current trajectory for that ARM
+		human_baxter_collaboration::BaxterStopTrajectory stop_msg;
+		stop_msg.arm = "left";
+		stop_pub.publish(stop_msg);
 	}
-	mngr_human->distance(mngr_bxtrR.get(), &distance_data, fcl::DefaultDistanceFunction);
-	if (distance_data.result.min_distance < human_bxtr_dist_th_)
+	mngr_human->distance(mngr_bxtrR.get(), &distance_data_hr, fcl::DefaultDistanceFunction);
+	if (distance_data_hr.result.min_distance < human_bxtr_dist_th_)
 	{
-		ROS_ERROR("HUMAN - BAXTER_RIGHT_ARM COLLISION INCOMING");
+		ROS_ERROR("HUMAN - BAXTER_RIGHT_ARM COLLISION INCOMING %lf", distance_data_hr.result.min_distance);
+		
+		// RIGHT arm too close to human, interrupt current trajectory for that ARM
+		human_baxter_collaboration::BaxterStopTrajectory stop_msg;
+		stop_msg.arm = "right";
+		stop_pub.publish(stop_msg);
 	}
-	mngr_bxtrL->distance(mngr_bxtrR.get(), &distance_data, fcl::DefaultDistanceFunction);
-	if (distance_data.result.min_distance < bxtr_bxtr_dist_th_)
+	mngr_bxtrL->distance(mngr_bxtrR.get(), &distance_data_rl, fcl::DefaultDistanceFunction);
+	if (distance_data_rl.result.min_distance < bxtr_bxtr_dist_th_)
 	{
-		ROS_ERROR("BAXTER_LEFT_ARM - BAXTER_RIGHT_ARM COLLISION INCOMING");
+		ROS_ERROR("BAXTER_LEFT_ARM - BAXTER_RIGHT_ARM COLLISION INCOMING %lf", distance_data_rl.result.min_distance);
+		
+		// LEFT arm too close to RIGHT arm, interrupt current trajectory for both
+		// They could temporarily lock if they try to replan at the same time.
+		// Not a deadlock though, since after N-attempts of failed plans they will resort too
+		// going back to the rest pose and re-start planning from there.
+		human_baxter_collaboration::BaxterStopTrajectory stop_msg;
+		stop_msg.arm = "left";
+		stop_pub.publish(stop_msg);
+		stop_msg.arm = "right";
+		stop_pub.publish(stop_msg);
 	}
 	
 	// TODO: msg publishing on baxter_moveit_trajectory/stop topic
@@ -106,7 +143,7 @@ void fillMap(	std::vector<std::string> v_link_names,
 			std::shared_ptr<urdf::Cylinder> cyl = std::dynamic_pointer_cast<urdf::Cylinder>((model.getLink(link_name))->collision->geometry);
 			
 			len  = cyl->length;
-			if (link_name == "left_wrist" || link_name == "right_name"){ len =  bxtr_wrist_ext_len; }
+			if (link_name == "left_wrist" || link_name == "right_wrist"){ len =  bxtr_wrist_ext_len; }
 		 	map_arm.insert(std::pair<std::string, Link>(link_name, Link(link_name, cyl->radius, len)));
 		}
 		catch (const std::exception& e)
@@ -120,8 +157,16 @@ void fillMap(	std::vector<std::string> v_link_names,
 
 int main(int argc, char **argv)
 {
+		if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info) ) {
+			 ros::console::notifyLoggerLevelsChanged();
+		}
     ros::init(argc, argv, "collision_detection");
     ros::NodeHandle node_handle;
+    
+    stop_pub = node_handle.advertise<human_baxter_collaboration::BaxterStopTrajectory>
+  							("baxter_moveit_trajectory/stop", 1000);
+    
+    tfListener = std::make_shared<tf2_ros::TransformListener>(tfBuffer);
     
     std::vector<std::string> human_armL_names = {"hand_l", "lowerarm_l", "upperarm_l"};
     std::vector<std::string> human_armR_names = {"hand_r", "lowerarm_r", "upperarm_r"};
@@ -132,7 +177,6 @@ int main(int argc, char **argv)
     std::vector<std::string> baxter_armR_names = {	"right_wrist", "right_lower_forearm",
     																							"right_upper_forearm", "right_lower_elbow",
     																							"right_upper_elbow"};  // in the end add manually length
-    
     
     
     fillMap(human_armL_names, human_arms, human_urdf);
@@ -146,8 +190,6 @@ int main(int argc, char **argv)
 		mngr_bxtrL = std::make_unique<fcl::DynamicAABBTreeCollisionManagerf>();
     mngr_bxtrR = std::make_unique<fcl::DynamicAABBTreeCollisionManagerf>();
     								
-    // let's see if it accepts also shared ptr instead of naked ones
-    // EDIT: nope, it doesn't
     std::vector<fcl::CollisionObjectf*> vec_human, vec_bxtrL, vec_bxtrR;
     
     for (auto m_link : human_arms)
@@ -173,47 +215,6 @@ int main(int argc, char **argv)
     mngr_bxtrR->setup();
     
     ros::Timer coll_det_timer = node_handle.createTimer(ros::Duration(check_period_), collisionCheck);
-    
-    // TESTS, IGNORE
-    // vvvvvvvvvvvvv
-		/*    
-    geometry_msgs::Pose pose;
-    pose.position.x = 1.0;
-    pose.orientation.y = std::sqrt(2.0)/2.0;
-    pose.orientation.w = std::sqrt(2.0)/2.0;
-
-    if (human_arms.count("hand_l")>0)
-    {
-    	std::shared_ptr<Link> tmp_link = std::make_shared<Link>(human_arms.find("hand_l")->second);
-		  tmp_link->setPose(pose);
-		  tmp_link->updateCollisionObject();
-		  std::shared_ptr<fcl::CollisionObjectf> coll = tmp_link->getCollisionObject();
-		  fcl::Vector3f tran = coll->getTranslation();
-		  fcl::Quaternionf quat = coll->getQuatRotation();
-		  ROS_INFO("HAND_L x%lf y%lf z%lf xr%lf yr%lf zr%lf wr%lf", tran[0], tran[1], tran[2],
-    																												quat.x(), quat.y(), quat.z(), quat.w());
-    }
-    for (auto coll : vec_human)
-    {
-		  fcl::Vector3f tran = coll->getTranslation();
-		  fcl::Quaternionf quat = coll->getQuatRotation();
-		  ROS_INFO("HAND_L x%lf y%lf z%lf xr%lf yr%lf zr%lf wr%lf", tran[0], tran[1], tran[2],
-    																												quat.x(), quat.y(), quat.z(), quat.w());
-    }
-    std::vector<fcl::CollisionObjectf*> tmp_vec;
-    mngr_human->getObjects(tmp_vec);
-    for (auto coll : tmp_vec)
-    {
-		  fcl::Vector3f tran = coll->getTranslation();
-		  fcl::Quaternionf quat = coll->getQuatRotation();
-		  ROS_INFO("HAND_L x%lf y%lf z%lf xr%lf yr%lf zr%lf wr%lf", tran[0], tran[1], tran[2],
-    																												quat.x(), quat.y(), quat.z(), quat.w());
-    }
-    */
-    
-    // Good news, it's enough to call mngr->update() to let it refit the inner tree!
-    
-    // TODO: create timer and bind coll_check to it
     
     ros::spin();
     return 0;

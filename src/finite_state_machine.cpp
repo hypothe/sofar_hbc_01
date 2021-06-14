@@ -26,7 +26,6 @@
 #include "geometry_msgs/Pose.h"
 #include "geometry_msgs/PoseStamped.h"
 #include "human_baxter_collaboration/BaxterGripperOpen.h"
-//#include "control_msgs/GripperCommandActionGoal.h"
 #include "human_baxter_collaboration/BaxterTrajectory.h"
 #include "human_baxter_collaboration/BaxterResultTrajectory.h"
 
@@ -73,7 +72,7 @@ void loadParam(){
   PLANNING_GROUP = ARM+"_arm";
   move_group_interface = std::make_shared<moveit::planning_interface::MoveGroupInterface>(PLANNING_GROUP);
 	planning_scene_interface = std::make_shared<moveit::planning_interface::PlanningSceneInterface>();
-	move_group_interface->setPlannerId("LazyRRTkConfigDefault");
+	move_group_interface->setPlannerId("RRTConnectkConfigMechanical");
 	 // RRTConnectkConfigMechanical
 	move_group_interface->setPlanningTime(2);
 	move_group_interface->setNumPlanningAttempts(4);
@@ -107,28 +106,56 @@ int main(int argc, char** argv)
   spinner.start();
 
   loadParam();
-  // Add table
-  collision_objects.push_back(genBoxObst(move_group_interface, "table", table_pos, table_dim));
+  
+  const double back_margin = 0.8;
+  // Add (extended)table
+  std::vector<double> ext_pos = table_pos;
+  std::vector<double> ext_dim = table_dim;
+  ext_dim[0] += back_margin;
+  ext_pos[0] -= back_margin/2.0;
+  
+  
+  collision_objects.push_back(genBoxObst(move_group_interface, "table", ext_pos, ext_dim));
+  
+  
+  const double lim_overst = 1.40;
+  // Add ceiling
+  std::vector<double> ceil_pos = ext_pos;
+  std::vector<double> ceil_dim = ext_dim;
+  ceil_dim[2] = 0.20;
+  ceil_pos[2] += lim_overst + ceil_dim[2]/2.0;
+  
+  collision_objects.push_back(genBoxObst(move_group_interface, "ceiling", ceil_pos, ceil_dim));
+  
   
   // Add front wall
   std::vector<double> wall_pos = table_pos;
   std::vector<double> wall_dim = table_dim;
   wall_dim[0] = 0.2;	// 20cm
-  wall_dim[2] = 2*table_dim[2];
-  wall_pos[0] += table_dim[0]/2;	// superimposes a bit with the table, not an issue
-  wall_pos[2] += table_dim[2]/2;
+  wall_dim[2] += lim_overst;
+  wall_pos[0] += table_dim[0]/2.0;	// superimposes a bit with the table, not an issue
+  wall_pos[2] = wall_dim[2]/2.0;
   
   collision_objects.push_back(genBoxObst(move_group_interface, "front_wall", wall_pos, wall_dim));
   
   // Add side-wall
   std::vector<double> side_wall_pos = table_pos;
   std::vector<double> side_wall_dim = table_dim;
+  side_wall_dim[0] += back_margin; // make it extend a bit beyond the table
+  side_wall_pos[0] -= back_margin/2.0;
   side_wall_dim[1] = 0.2;	// 20cm
-  side_wall_dim[2] = 2*table_dim[2];
+  side_wall_dim[2] += lim_overst;
   side_wall_pos[1] += (1-2*(int)(ARM=="right"))*(table_dim[1]/2.0 + side_wall_dim[1]/2.0);	// superimposes a bit with the table, not an issue
-  side_wall_pos[2] += table_dim[2]/2;
+  side_wall_pos[2] = side_wall_dim[2]/2.0;
   
   collision_objects.push_back(genBoxObst(move_group_interface, std::string(ARM+"_side_wall"), side_wall_pos, side_wall_dim));
+  
+  // Add back wall
+  std::vector<double> back_pos = wall_pos;
+  std::vector<double> back_dim = wall_dim;
+  back_pos[0] = - back_margin/2.0;	
+  
+  collision_objects.push_back(genBoxObst(move_group_interface, "back_wall", back_pos, wall_dim));
   
   
   // Now, let's add the "static" collision objects into the world
@@ -141,8 +168,8 @@ int main(int argc, char** argv)
   
   
   // Generate fictious obstacles to force the arm to stay far from the table
-  std::vector<double> dyn_pos = table_pos;
-  std::vector<double> dyn_dim = table_dim;
+  std::vector<double> dyn_pos = ext_pos;
+  std::vector<double> dyn_dim = ext_dim;
   dyn_dim[1] = table_dim[1]/2.0;
   dyn_dim[2] = 0.26;
   dyn_pos[1] += (1-2*(int)(ARM=="right"))*table_dim[1]/4.0;	// select the correct half-table

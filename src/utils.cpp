@@ -33,6 +33,13 @@ double dist3(geometry_msgs::Pose pose1, geometry_msgs::Pose pose2)
 										std::pow(pose2.position.z - pose1.position.z, 2)	);
 	
 }
+double dist3(fcl::Vector3f vec1, fcl::Vector3f vec2)
+{	
+	return std::sqrt(	std::pow(vec1[0] - vec2[0], 2) + 
+										std::pow(vec1[1] - vec2[1], 2) + 
+										std::pow(vec1[2] - vec2[2], 2)	);
+	
+}
 
 
 
