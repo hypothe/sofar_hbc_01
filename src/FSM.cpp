@@ -582,7 +582,7 @@ bool FSM::stateEvolution(){
 		}
 		case IDLE:
 		{
-			ROS_WARN("Going to rest state (%d)", BAXTER_ATTEMPTS_);
+			ROS_WARN("BAXTER_FSM_%s: Going to rest state (%d)", ARM.c_str(), BAXTER_ATTEMPTS_);
 			next_state = FSM::rest();
 			
 			if (next_state == IDLE){	auto_evolve = false;	}

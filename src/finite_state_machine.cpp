@@ -68,22 +68,16 @@ void loadParam(){
   PLANNING_GROUP = ARM+"_arm";
   move_group_interface = std::make_shared<moveit::planning_interface::MoveGroupInterface>(PLANNING_GROUP);
 	planning_scene_interface = std::make_shared<moveit::planning_interface::PlanningSceneInterface>();
-	move_group_interface->setPlannerId("RRTConnectkConfigMechanical");
-	 // RRTConnectkConfigMechanical
-	move_group_interface->setPlanningTime(2);
-	move_group_interface->setNumPlanningAttempts(4);
+	move_group_interface->setPlannerId("RRTStarkConfigState");
+	 // RRTConnectkConfigDefault
+	 // RRTStarkConfigState
+	move_group_interface->setPlanningTime(1.5);
+	move_group_interface->setNumPlanningAttempts(6);
 	
-  // baxter_rest_pose_ = move_group_interface->getCurrentPose().pose;
   baxter_rest_pose_ = move_group_interface->getCurrentJointValues();
 	
 }
 
-/*	NOTE: instead of calling FSM directly we could call it in a loop from the main,
-		making use of a flag to set whether a new call arrived from the last one:
-		Can't really see any improvement there if not for the possibility to impose a
-		rate for such check. Which, being this a slowly-evolving FSM, wouldn't bring any
-		improvement I can think of.
-*/
 
 int main(int argc, char** argv)
 {
