@@ -21,6 +21,8 @@
 
 #include "sofar_hbc_01/Link.h"
 #include "sofar_hbc_01/utils.h"
+#include "sofar_hbc_01/CollisionDetectionToggle.h"
+#include "sofar_hbc_01/CollisionDetectionResult.h"
 #include "human_baxter_collaboration/BaxterStopTrajectory.h"
 
 using Real = typename fcl::constants<double>::Real;
@@ -36,13 +38,43 @@ std::shared_ptr<tf2_ros::TransformListener> tfListener;
 
 std::map<std::string, Link> human_arms, bxtr_armL, bxtr_armR;
 const float human_bxtr_dist_th_ = 0.07; //< totally arbitratry for now;
-const float bxtr_bxtr_dist_th_ = 0.9; //< totally arbitratry for now;
+const float bxtr_bxtr_dist_th_ = 0.08; //< totally arbitrary for now;
 std::unique_ptr<fcl::BroadPhaseCollisionManagerf> mngr_human, mngr_bxtrL, mngr_bxtrR;
 
 ros::Publisher stop_pub;
 
+bool cd_on_L = true;
+bool cd_on_R = true;
+
+
+ros::ServiceClient client_cd_res_L, client_cd_res_R;
+
+void setCollisionL(bool collision)
+{
+	if (cd_on_L != collision){ROS_WARN("COLLISION DETECTION LEFT %s", collision ? "ENABLED" : "DISABLED");}
+	
+	cd_on_L = collision;
+}
+void setCollisionR(bool collision)
+{
+	if (cd_on_R != collision){ROS_WARN("COLLISION DETECTION RIGHT %s", collision ? "ENABLED" : "DISABLED");}
+	
+	cd_on_R = collision;
+}
+
+bool toggleCD(sofar_hbc_01::CollisionDetectionToggle::Request &req,
+							sofar_hbc_01::CollisionDetectionToggle::Response &res)
+{
+	if (req.arm == "left")	{	setCollisionL(req.cd_on);	}
+	else										{	setCollisionR(req.cd_on);	}
+	return true;
+}
+
 void collisionCheck(const ros::TimerEvent&)
 {
+	// vvv If collision detection is momentarily disabled ignore this callback vvv
+	
+	
 	geometry_msgs::TransformStamped transformStamped;
 	geometry_msgs::Pose pose;
 	// is this temp vector creation too slow?
@@ -80,46 +112,99 @@ void collisionCheck(const ros::TimerEvent&)
 	distance_data_rl.request.enable_nearest_points = true;
 		\DEBUG	*/
 	
-	mngr_human->distance(mngr_bxtrL.get(), &distance_data_hl, fcl::DefaultDistanceFunction);
-	if (distance_data_hl.result.min_distance < human_bxtr_dist_th_)
+	if (cd_on_L)
 	{
-		ROS_ERROR("HUMAN - BAXTER_LEFT_ARM COLLISION INCOMING %lf", distance_data_hl.result.min_distance);
-		/* DEBUG
-		fcl::Vector3f p1, p2;
-		p1 = distance_data_hl.result.nearest_points[0];
-		p2 = distance_data_hl.result.nearest_points[1];
-		ROS_DEBUG("TWO CLOSEST POINTS [%lf %lf  %lf], [%lf %lf  %lf]", p1[0], p1[1], p1[2],  p2[0], p2[1], p2[2]);
-			\DEBUG */
+		mngr_human->distance(mngr_bxtrL.get(), &distance_data_hl, fcl::DefaultDistanceFunction);
+		if (distance_data_hl.result.min_distance < human_bxtr_dist_th_)
+		{
+			ROS_ERROR("HUMAN - BAXTER_LEFT_ARM COLLISION INCOMING %lf", distance_data_hl.result.min_distance);
+			/* DEBUG
+			fcl::Vector3f p1, p2;
+			p1 = distance_data_hl.result.nearest_points[0];
+			p2 = distance_data_hl.result.nearest_points[1];
+			ROS_DEBUG("TWO CLOSEST POINTS [%lf %lf  %lf], [%lf %lf  %lf]", p1[0], p1[1], p1[2],  p2[0], p2[1], p2[2]);
+				\DEBUG */
+				
+			// vvv avoid bursts of collisions vvv
+			setCollisionL(false);
+			// LEFT arm too close to human, interrupt current trajectory for that ARM
+			human_baxter_collaboration::BaxterStopTrajectory stop_msg;
+			stop_msg.arm = "left";
+			stop_pub.publish(stop_msg);
 			
-		// LEFT arm too close to human, interrupt current trajectory for that ARM
-		human_baxter_collaboration::BaxterStopTrajectory stop_msg;
-		stop_msg.arm = "left";
-		stop_pub.publish(stop_msg);
+			sofar_hbc_01::CollisionDetectionResult cdres;
+			cdres.request.arm = "left";
+			cdres.request.severity = "LOW";
+			client_cd_res_L.call(cdres);
+			
+			setCollisionL(cdres.response.cd_on);
+			//cd_on_L = cdres.response.cd_on;
+		}
 	}
-	mngr_human->distance(mngr_bxtrR.get(), &distance_data_hr, fcl::DefaultDistanceFunction);
-	if (distance_data_hr.result.min_distance < human_bxtr_dist_th_)
-	{
-		ROS_ERROR("HUMAN - BAXTER_RIGHT_ARM COLLISION INCOMING %lf", distance_data_hr.result.min_distance);
-		
-		// RIGHT arm too close to human, interrupt current trajectory for that ARM
-		human_baxter_collaboration::BaxterStopTrajectory stop_msg;
-		stop_msg.arm = "right";
-		stop_pub.publish(stop_msg);
+	if (cd_on_R)
+		{
+		mngr_human->distance(mngr_bxtrR.get(), &distance_data_hr, fcl::DefaultDistanceFunction);
+		if (cd_on_R && distance_data_hr.result.min_distance < human_bxtr_dist_th_)
+		{
+			ROS_ERROR("HUMAN - BAXTER_RIGHT_ARM COLLISION INCOMING %lf", distance_data_hr.result.min_distance);
+			
+			
+			// vvv avoid bursts of collisions vvv
+			setCollisionR(false);
+			// RIGHT arm too close to human, interrupt current trajectory for that ARM
+			human_baxter_collaboration::BaxterStopTrajectory stop_msg;
+			stop_msg.arm = "right";
+			stop_pub.publish(stop_msg);
+			
+			sofar_hbc_01::CollisionDetectionResult cdres;
+			cdres.request.arm = "right";
+			cdres.request.severity = "LOW";
+			client_cd_res_R.call(cdres);
+			// cd_on_R = cdres.response.cd_on;
+			setCollisionR(cdres.response.cd_on);
+		}
 	}
-	mngr_bxtrL->distance(mngr_bxtrR.get(), &distance_data_rl, fcl::DefaultDistanceFunction);
-	if (distance_data_rl.result.min_distance < bxtr_bxtr_dist_th_)
+	
+	if (cd_on_L && cd_on_R)
 	{
-		ROS_ERROR("BAXTER_LEFT_ARM - BAXTER_RIGHT_ARM COLLISION INCOMING %lf", distance_data_rl.result.min_distance);
-		
-		// LEFT arm too close to RIGHT arm, interrupt current trajectory for both
-		// They could temporarily lock if they try to replan at the same time.
-		// Not a deadlock though, since after N-attempts of failed plans they will resort too
-		// going back to the rest pose and re-start planning from there.
-		human_baxter_collaboration::BaxterStopTrajectory stop_msg;
-		stop_msg.arm = "left";
-		stop_pub.publish(stop_msg);
-		stop_msg.arm = "right";
-		stop_pub.publish(stop_msg);
+		mngr_bxtrL->distance(mngr_bxtrR.get(), &distance_data_rl, fcl::DefaultDistanceFunction);
+		if (distance_data_rl.result.min_distance < bxtr_bxtr_dist_th_)
+		{
+			ROS_ERROR("BAXTER_LEFT_ARM - BAXTER_RIGHT_ARM COLLISION INCOMING %lf", distance_data_rl.result.min_distance);
+			
+			// LEFT arm too close to RIGHT arm, interrupt current trajectory for both
+			// They could temporarily lock if they try to replan at the same time.
+			// Not a deadlock though, since after N-attempts of failed plans they will resort too
+			// going back to the rest pose and re-start planning from there.
+			
+			// vvv avoid bursts of collisions vvv
+			setCollisionL(false);
+			setCollisionR(false);
+			/////////////////////////////////////
+			human_baxter_collaboration::BaxterStopTrajectory stop_msg;
+			stop_msg.arm = "left";
+			stop_pub.publish(stop_msg);
+			stop_msg.arm = "right";
+			stop_pub.publish(stop_msg);
+			/*	Directly inform FSM of collision,	expresing how severe
+					of a collision it was.
+					Modify the inner flags on whether to keep checking for
+					collisions or not depending on the response.
+			*/
+			sofar_hbc_01::CollisionDetectionResult cdres;
+			
+			cdres.request.arm = "left";
+			cdres.request.severity = "HIGH";
+			client_cd_res_L.call(cdres);
+			// cd_on_L = cdres.response.cd_on;
+			setCollisionL(cdres.response.cd_on);
+			
+			cdres.request.arm = "right";
+			cdres.request.severity = "HIGH";
+			client_cd_res_R.call(cdres);
+			// cd_on_R = cdres.response.cd_on;
+			setCollisionR(cdres.response.cd_on);
+		}
 	}
 	
 	// TODO: msg publishing on baxter_moveit_trajectory/stop topic
@@ -133,7 +218,7 @@ void fillMap(	std::vector<std::string> v_link_names,
 {
   urdf::Model model;
   
-  if (!model.initParam(model_name)){ROS_ERROR("Error while loading %s", model_name.c_str());}
+  if (!model.initParam(model_name)){ROS_ERROR("Error while loading %s", model_name.c_str()); ros::shutdown();}
   double len;
   for (auto link_name : v_link_names)
   {
@@ -162,6 +247,11 @@ int main(int argc, char **argv)
 		}
     ros::init(argc, argv, "collision_detection");
     ros::NodeHandle node_handle;
+    
+    client_cd_res_L = node_handle.serviceClient<sofar_hbc_01::CollisionDetectionResult>("/baxter/collision_detection/left/result");
+    client_cd_res_R = node_handle.serviceClient<sofar_hbc_01::CollisionDetectionResult>("/baxter/collision_detection/right/result");
+    
+		ros::ServiceServer toggle_cd_srv = node_handle.advertiseService("/baxter/collision_detection/toggle", toggleCD);
     
     stop_pub = node_handle.advertise<human_baxter_collaboration::BaxterStopTrajectory>
   							("baxter_moveit_trajectory/stop", 1000);

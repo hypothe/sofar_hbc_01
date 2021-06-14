@@ -1,0 +1,7 @@
+# Collision Detection toggle
+
+string arm
+bool cd_on
+
+---
+

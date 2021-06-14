@@ -15,6 +15,8 @@
 #include "geometry_msgs/Quaternion.h"
 #include "sofar_hbc_01/Block.h"
 #include "sofar_hbc_01/utils.h"
+#include "sofar_hbc_01/CollisionDetectionToggle.h"
+#include "sofar_hbc_01/CollisionDetectionResult.h"
 #include "human_baxter_collaboration/BaxterGripperOpen.h"
 #include "human_baxter_collaboration/BaxterTrajectory.h"
 #include "human_baxter_collaboration/BaxterResultTrajectory.h"
@@ -56,6 +58,8 @@ class FSM{
 		bool stateEvolution();
 
 		void clock_Cllbck(const ros::TimerEvent&);
+		bool collisionPolicy(	sofar_hbc_01::CollisionDetectionResult::Request &req,
+													sofar_hbc_01::CollisionDetectionResult::Response &res);
 		void trajectoryResult(const human_baxter_collaboration::BaxterResultTrajectory::ConstPtr& msg);
 				
 		state_t start();
@@ -87,7 +91,8 @@ class FSM{
 		std::shared_ptr<Block> block;
 		std::shared_ptr<ros::NodeHandle> node_handle;
 		std::string ARM;
-		std::shared_ptr<ros::ServiceClient> client_b2p,	client_ces;
+		std::shared_ptr<ros::ServiceClient> client_b2p,	client_ces, client_cd;
+		std::shared_ptr<ros::ServiceServer> collision_result_srv;
 		std::shared_ptr<ros::Publisher> traj_pub, gripper_pub;
 		std::shared_ptr<ros::Subscriber> res_sub;
 		std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface;

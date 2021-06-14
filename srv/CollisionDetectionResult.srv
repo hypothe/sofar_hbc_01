@@ -1,0 +1,8 @@
+# Collision Detection toggle
+
+string arm
+string severity
+
+---
+
+bool cd_on

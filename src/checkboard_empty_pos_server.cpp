@@ -13,7 +13,7 @@
 #include "sofar_hbc_01/BlocksPoses.h"
 #include "sofar_hbc_01/utils.h"
 
-const double max_dist = 0.04;
+double max_dist = 0.04;
 
 ros::ServiceClient client_blocks_tf;
 	std::vector<geometry_msgs::Point> shift;
@@ -65,7 +65,9 @@ int main(int argc, char** argv)
   ros::NodeHandle node_handle;
 
  	// service that gets one EEF pose and returns the pose of the block closest to it
- 	
+ 	double blocks_dim = 0.05;
+ 	if(!ros::param::get("blocks_dim", blocks_dim)){	ROS_ERROR("No parameter named 'blocks_dim' found");	}
+ 	max_dist = blocks_dim;
  	//create the vector with the 9 cell
 	geometry_msgs::Point point;
 	point.x = 0.0; point.y = 0.0;
@@ -74,8 +76,8 @@ int main(int argc, char** argv)
 	for(int i = -1; i <= 1; i++){
 		for(int j = 1; j >= -1; j--){
 			if (i==0 && j==0) continue;
-			point.x = 0.05*i;
-			point.y = 0.05*j;
+			point.x = (blocks_dim+0.005)*i;
+			point.y = (blocks_dim+0.005)*j;
 			shift.push_back(point);
 		}
 	}

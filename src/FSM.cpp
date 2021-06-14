@@ -6,6 +6,9 @@
 #include <stdexcept>
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 
+#include <cstdlib>
+#include <ctime>
+
 FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
 					std::string ARM,
 					std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,
@@ -51,6 +54,14 @@ FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
   							(node_handle->serviceClient<sofar_hbc_01::ClosestEmptySpace>
   								("/empty_pos")
   							);
+  client_cd = std::make_shared<ros::ServiceClient>
+  							(node_handle->serviceClient<sofar_hbc_01::CollisionDetectionToggle>
+  								("/baxter/collision_detection/toggle")
+  							);
+  
+	collision_result_srv = std::make_shared<ros::ServiceServer>(node_handle->advertiseService(std::string("/baxter/collision_detection/"+ARM+"/result"), &FSM::collisionPolicy, this));
+    							
+  
   FSM_clock = node_handle->createTimer(ros::Duration(1.0), &FSM::clock_Cllbck, this, false, false);
 }
 // we need the publisher and the two clients
@@ -61,6 +72,7 @@ void FSM::init()
 	FSM_clock.start();
 	evolve = true;
 	ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
+	std::srand(std::time(nullptr));
 }
 
 void FSM::setPickHeight(double n_height)
@@ -222,12 +234,17 @@ bool FSM::computeTraj(moveit_msgs::RobotTrajectory& traj)
   
   bool success = false;
   
+	applyDynamicCollisionObjects();
+	
   while (!success && attempt < max_attempts){
   	success = (move_group_interface->plan(my_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
   	ROS_INFO("Plan for pose goal %s %s", ARM.c_str(), success ? "" : "FAILED");
   	ros::Duration(1.0).sleep();
   	attempt++;
   }
+  
+	removeDynamicCollisionObjects(); //< remove it asap since its async
+	
 	if (attempt >= max_attempts){
 		return false;
 	}
@@ -276,6 +293,7 @@ void FSM::removeDynamicCollisionObjects()
 
 }
 
+
 /*	--------------	*/
 /*	--- STATE ----	*/
 
@@ -284,7 +302,7 @@ state_t FSM::start()
 	
 	if (block != nullptr){
 		gripperOpen(true);
-		ros::Duration(1.0).sleep();
+		ros::Duration(0.3).sleep();
 		// setBlockGrasped(block->getName(), false);	
 	}
 	block = nullptr;
@@ -371,11 +389,11 @@ state_t FSM::placeBlue()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 	
-	applyDynamicCollisionObjects();
-	state_t succ = generatePlan(goal_pose) ? START : ERR;
+	// applyDynamicCollisionObjects();
+	return generatePlan(goal_pose) ? START : ERR;
 	// the removal is Asynchronous, test if it causes problems
-	removeDynamicCollisionObjects(); //< remove it asap since its async
-	return succ;	//< the gripper will open in START			
+	// removeDynamicCollisionObjects(); //< remove it asap since its async
+	//< the gripper will open in START			
 }
 
 state_t FSM::removeRed()
@@ -392,11 +410,11 @@ state_t FSM::removeRed()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 			
-	applyDynamicCollisionObjects();
-	state_t succ = generatePlan(goal_pose) ? START : ERR;
+	// applyDynamicCollisionObjects();
+	return generatePlan(goal_pose) ? START : ERR;
 	// the removal is Asynchronous, test if it causes problems
-	removeDynamicCollisionObjects();
-	return succ;	//< the gripper will open in START	
+	// removeDynamicCollisionObjects();
+	// return succ;	//< the gripper will open in START	
 }
 
 state_t	FSM::rest()
@@ -407,15 +425,27 @@ state_t	FSM::rest()
 		// setBlockGrasped(block->getName(), false);
 		gripperOpen(true);
 		block = nullptr;
-		ros::Duration(1.0).sleep();
+		ros::Duration(0.3).sleep();
 		// BAXTER_ATTEMPTS_ = 0;
 	}
-		
+	
+	state_t succ = START;	
 	if (BAXTER_ATTEMPTS_ == 0)
 	{
 		generatePlan(baxter_rest_pose_);
+		succ = IDLE;
+		ROS_WARN("BAXTER_FSM_%s: GOING BACK TO REST POSE", ARM.c_str());
+		/*	This wait is mainly used in the case of rest_pose
+				after a collision is detected
+			*/
+		double wait = 3.0 * std::rand()/RAND_MAX;
+		ros::Duration(wait).sleep();
 	}
-	return ++BAXTER_ATTEMPTS_ <= MAX_BAXTER_ATTEMPTS_ ? START : END;
+	
+	BAXTER_ATTEMPTS_++;
+	if (BAXTER_ATTEMPTS_ >= MAX_BAXTER_ATTEMPTS_){	succ = END;	}
+	
+	return succ;
 }
 
 
@@ -554,6 +584,8 @@ bool FSM::stateEvolution(){
 		{
 			ROS_WARN("Going to rest state (%d)", BAXTER_ATTEMPTS_);
 			next_state = FSM::rest();
+			
+			if (next_state == IDLE){	auto_evolve = false;	}
 			// auto_evolve = true;	//< already true
 			break;
 		}
@@ -589,17 +621,54 @@ void FSM::clock_Cllbck(const ros::TimerEvent&)
 void FSM::trajectoryResult(const human_baxter_collaboration::BaxterResultTrajectory::ConstPtr& msg)
 {
 	if (msg->arm != ARM){ return; } // not meant for this node!
-	
+
 	ROS_DEBUG("BAXTER_FSM_%s: RECEIVED RESULT", ARM.c_str());
-	if (!msg->success){	
-		// TODO: figure out how to correctly recover from a collision
-		next_state = state;
-		// For the moment simply go into ERR state
-		next_state = ERR;
-		ROS_WARN("Current trajectory interrupted, replanning.");
-	}	//< rollback
-	evolve = true;
+	
+	// setting always evolve = msg.succes might compromise
+	if (msg->success)
+	{
+		evolve = true;
+		// vvv	Reset collision detection, in case it was unset before	vvv
+		// TODO: inner state flag determining if the status is set to on or off,
+		// calling only if the status changed to narrow the bandwidth
+		sofar_hbc_01::CollisionDetectionToggle cd;
+		cd.request.arm = ARM;
+		cd.request.cd_on = true;
+		
+		client_cd->call(cd);
+	}
 }
+
+bool FSM::collisionPolicy(	sofar_hbc_01::CollisionDetectionResult::Request &req,
+											sofar_hbc_01::CollisionDetectionResult::Response &res)
+{
+	ROS_WARN("BAXTER_FSM_%s: Current trajectory interrupted, replanning %s", ARM.c_str(), req.severity=="HIGH"?"from scratch":"");
+	
+	if (req.severity == "HIGH")
+	{	
+		// TODO: figure out how to correctly recover from a collision
+		// next_state = state;
+		// For the moment simply go into ERR state
+		/*	In case of "major" collision go to start and replan from scratch	*/
+		next_state = ERR;
+		
+		res.cd_on = false;
+		
+		BAXTER_ATTEMPTS_ = 0;
+		
+		
+	}	//< rollback
+	else if (req.severity == "LOW")
+	{
+		/*	In case of "minor" collision just replan from here	*/
+		res.cd_on = true;
+		next_state = state;
+	}
+	evolve = true;
+	
+	return true;
+}
+
 
 // NOTE: theoretically, a lot of race conditions might appear with evolve, state, next_state
 // Nevertheless, due to how the state progression is designed, they should in the concrete case
