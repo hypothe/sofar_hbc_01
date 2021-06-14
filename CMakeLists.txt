@@ -188,7 +188,7 @@ add_dependencies(finite_state_machine
 add_dependencies(blocks_server
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
-add_dependencies(empty_pos_server1
+add_dependencies(empty_pos_server
 	${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS}
 )
 add_dependencies(collision_detection
@@ -221,10 +221,10 @@ target_link_libraries(blocks_server
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(empty_pos_server1
+target_link_libraries(empty_pos_server
   ${PROJECT_NAME}
 )
-target_link_libraries(empty_pos_server1
+target_link_libraries(empty_pos_server
   ${catkin_LIBRARIES}
 )
 target_link_libraries(collision_detection
