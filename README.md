@@ -73,6 +73,9 @@ Launches a node which forwards the gripper commands to the robot, together with 
 ```
 Might be counterproductive in the real scenario, use with care.
 
+# Documentation
+
+See Doxygen page at: [HumanRobotCollaboration Documentation](https://hypothe.github.io/sofar_hbc_01/)
 
 # Other resources
 
