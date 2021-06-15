@@ -1,4 +1,18 @@
-/* Author: Marco G. Fedozzi */
+/****************************************//**
+* \file utils.cpp
+* \brief Utility functions implementation
+* \author Marco Gabriele Fedozzi (5083365@studenti.unige.it)
+* \version 1.0
+* \date 14/06/2021
+*
+* \details
+*
+* Description:
+*
+* This script implements the utility functions
+*	defined at utils.h
+*
+********************************************/
 
 #include "sofar_hbc_01/utils.h"
 
@@ -44,7 +58,7 @@ double dist3(fcl::Vector3f vec1, fcl::Vector3f vec2)
 
 
 moveit_msgs::CollisionObject genBoxObst(
-								std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface,
+								std::string frame_id,
 								std::string obst_name,
 								std::vector<double> box_pos,
 								std::vector<double> box_dim,
@@ -52,7 +66,7 @@ moveit_msgs::CollisionObject genBoxObst(
 {
 								
 	moveit_msgs::CollisionObject collision_object;
-  collision_object.header.frame_id = move_group_interface->getPlanningFrame();
+  collision_object.header.frame_id = frame_id;
 
   // The id of the object is used to identify it.
   collision_object.id = obst_name;

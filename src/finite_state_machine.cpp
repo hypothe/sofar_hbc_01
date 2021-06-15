@@ -1,9 +1,52 @@
-/* Author: Marco G. Fedozzi */
-
+/****************************************//**
+* \file finite_state_machine.cpp
+* \brief Node setting up the environment for FSM class
+* \author Marco Gabriele Fedozzi (5083365@studenti.unige.it)
+* \version 1.0
+* \date 14/06/2021
+*
+* \details
+*
+* **ServiceServer:**<BR>
+*   `/baxter/collision_detection/<ARM>/result` (sofar_hbc_01::CollisionDetectionResult)<BR>
+*
+* **ServiceClient:**<BR>
+*   `/block_to_pick` (sofar_hbc_01::Block2Pick)<BR>
+*   `/empty_pos` (sofar_hbc_01::ClosestEmptySpace)<BR>
+*   `/baxter/collision_detection/toggle` (sofar_hbc_01::CollisionDetectionToggle)<BR>
+*
+* **Publishes to:**<BR>
+*		`/baxter_moveit_trajectory` (human_baxter_collaboration::BaxterTrajectory)<BR>
+*		`robot/limb/<ARM>/<ARM>_gripper` (human_baxter_collaboration::BaxterGripperOpen)<BR>
+*
+* **Subscribes to:**<BR>
+*		`/baxter_moveit_trajectory/result` (human_baxter_collaboration::BaxterTrajectoryResult)<BR>
+*
+* Description:
+*
+* This node is responsible for the whole state
+*	machine implementation of the pick&place
+*	skill of one individual arm.
+*	The actual implementation is hidden
+*	inside the `FSM` class, whilst this script
+*	merely sets up the planning space and the
+*	"Moveit!" move group interface.
+*	Baxter is first of all encased in a confined
+* workspace generating wall obstacles all
+* around the table, in order to limit the
+* movements RRTStar, the OMPL planner used,
+*	can generate. Moreover, a set of "dynamic"
+*	obstacles is generated, representing blocks
+* covering half of the table, to be put in
+*	in place when planning to move the eef in
+*	order to always have it far above the table
+*	surface, except when grasping blocks.
+*
+********************************************/
 /*
 	- in case of a failed trajectory replanning happens immediately, and not when the
 		scene is considered free: might not be a problem in a non-slowly evolving scenario
-	- do the grippers have enough time to open and close?
+	- do the grippers have enough time to open and close? Real implementation uses actions.
 */
 
 #include "ros/ros.h"
@@ -30,25 +73,26 @@
 #include "sofar_hbc_01/Block2Pick.h"
 #include "sofar_hbc_01/ClosestEmptySpace.h"
 
-//geometry_msgs::Pose BLOCK_DEST_;
-std::map<std::string, bool> placed_;
 std::vector<double> table_pos, table_dim, table_extra = {0.0, 0.0, 0.1};
-std::vector<double> block_dest;
+std::vector<double> block_dest;	//< this EEF destination position (either the middle of the table or the blue box)
 
-// geometry_msgs::Pose baxter_rest_pose_;
-std::vector<double> baxter_rest_pose_;
+std::vector<double> baxter_rest_pose_;	//< Baxter initial (at rest) Joint State
 
 // MoveIt operates on sets of joints called "planning groups" and stores them in an object called
 // the `JointModelGroup`. Throughout MoveIt the terms "planning group" and "joint model group"
 // are used interchangably.
 std::string ARM;
-std::string PLANNING_GROUP; // = ARM+"_arm";
+std::string PLANNING_GROUP;
 std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface;	std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface;
-std::shared_ptr<FSM> fsm_;
+std::shared_ptr<FSM> fsm_;	//< The object implementing the FSM behavior
 
 
 /* ------------------------ */
-
+/****************************************//**
+* Load parameters from the param server and
+* initialize the move_group_interface.
+*
+********************************************/
 void loadParam(){
 	
   if(!ros::param::get("~arm", ARM)){
@@ -97,7 +141,7 @@ int main(int argc, char** argv)
 
   loadParam();
   
-  const double back_margin = 0.8;
+  const double back_margin = 0.6;
   // Add (extended)table
   std::vector<double> ext_pos = table_pos;
   std::vector<double> ext_dim = table_dim;
@@ -105,17 +149,17 @@ int main(int argc, char** argv)
   ext_pos[0] -= back_margin/2.0;
   
   
-  collision_objects.push_back(genBoxObst(move_group_interface, "table", ext_pos, ext_dim));
+  collision_objects.push_back(genBoxObst(move_group_interface->getPlanningFrame(), "table", ext_pos, ext_dim));
   
   
-  const double lim_overst = 1.40;
+  const double lim_overst = 1.0;
   // Add ceiling
   std::vector<double> ceil_pos = ext_pos;
   std::vector<double> ceil_dim = ext_dim;
   ceil_dim[2] = 0.20;
-  ceil_pos[2] += lim_overst + ceil_dim[2]/2.0;
+  ceil_pos[2] += lim_overst + ext_dim[2]/2.0;
   
-  collision_objects.push_back(genBoxObst(move_group_interface, "ceiling", ceil_pos, ceil_dim));
+  collision_objects.push_back(genBoxObst(move_group_interface->getPlanningFrame(), "ceiling", ceil_pos, ceil_dim));
   
   
   // Add front wall
@@ -126,7 +170,7 @@ int main(int argc, char** argv)
   wall_pos[0] += table_dim[0]/2.0;	// superimposes a bit with the table, not an issue
   wall_pos[2] = wall_dim[2]/2.0;
   
-  collision_objects.push_back(genBoxObst(move_group_interface, "front_wall", wall_pos, wall_dim));
+  collision_objects.push_back(genBoxObst(move_group_interface->getPlanningFrame(), "front_wall", wall_pos, wall_dim));
   
   // Add side-wall
   std::vector<double> side_wall_pos = table_pos;
@@ -138,14 +182,14 @@ int main(int argc, char** argv)
   side_wall_pos[1] += (1-2*(int)(ARM=="right"))*(table_dim[1]/2.0 + side_wall_dim[1]/2.0);	// superimposes a bit with the table, not an issue
   side_wall_pos[2] = side_wall_dim[2]/2.0;
   
-  collision_objects.push_back(genBoxObst(move_group_interface, std::string(ARM+"_side_wall"), side_wall_pos, side_wall_dim));
+  collision_objects.push_back(genBoxObst(move_group_interface->getPlanningFrame(), std::string(ARM+"_side_wall"), side_wall_pos, side_wall_dim));
   
   // Add back wall
   std::vector<double> back_pos = wall_pos;
   std::vector<double> back_dim = wall_dim;
-  back_pos[0] = - back_margin/2.0;	
+  back_pos[0] = ext_pos[0]-ext_dim[0]/2.0;	
   
-  collision_objects.push_back(genBoxObst(move_group_interface, "back_wall", back_pos, wall_dim));
+  collision_objects.push_back(genBoxObst(move_group_interface->getPlanningFrame(), "back_wall", back_pos, wall_dim));
   
   
   // Now, let's add the "static" collision objects into the world
@@ -165,7 +209,7 @@ int main(int argc, char** argv)
   dyn_pos[1] += (1-2*(int)(ARM=="right"))*table_dim[1]/4.0;	// select the correct half-table
   dyn_pos[2] += table_dim[2]/2.0;	// superimposes a bit with the table, not an issue
   									
-	half_table_CO = genBoxObst(move_group_interface, std::string(ARM+"_half_table"), dyn_pos, dyn_dim);
+	half_table_CO = genBoxObst(move_group_interface->getPlanningFrame(), std::string(ARM+"_half_table"), dyn_pos, dyn_dim);
   
   fsm_ = std::make_shared<FSM>(
   						std::make_shared<ros::NodeHandle>(node_handle),
@@ -177,8 +221,6 @@ int main(int argc, char** argv)
   fsm_->setBlockDest(block_dest);
   fsm_->setRestPose(baxter_rest_pose_);
   fsm_->setDynamicObst(half_table_CO);
-  
- // ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
   
   fsm_->init();
 

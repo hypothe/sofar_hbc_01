@@ -1,0 +1,5 @@
+<map id="include/sofar_hbc_01/Link.h" name="include/sofar_hbc_01/Link.h">
+<area shape="rect" id="node1" title="Class definition of the Link item." alt="" coords="109,5,267,47"/>
+<area shape="rect" id="node2" href="$collision__detection_8cpp.html" title="Node performing periodic collision detection." alt="" coords="5,95,200,121"/>
+<area shape="rect" id="node3" href="$_link_8cpp.html" title="Class implementation of the Link item." alt="" coords="224,95,323,121"/>
+</map>

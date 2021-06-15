@@ -1,4 +1,11 @@
-# Collision Detection toggle
+##	\file CollisionDetectionToggle.srv 
+#		\brief Collision Detection toggle
+#
+#		\details
+#		Toggles the collision detection provided by the server:
+#		Generally used to restart performing collision detection:
+#		to disable it as a consequence of a collision see CollisionDetectionResult.srv
+#		
 
 string arm
 bool cd_on

@@ -33,7 +33,7 @@
 
 # Only local stuff
 *.lcl
+*.in
 
 # test files
-
 test/

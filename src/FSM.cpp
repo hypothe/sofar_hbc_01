@@ -1,4 +1,52 @@
-/* Author: Marco G. Fedozzi */
+/****************************************//**
+* \file FSM.cpp
+* \brief Class implementation of the FSM behavior
+* \author Marco Gabriele Fedozzi (5083365@studenti.unige.it)
+* \version 1.0
+* \date 14/06/2021
+*
+* \details
+*
+* **ServiceServer:**<BR>
+*   `/baxter/collision_detection/<ARM>/result` (sofar_hbc_01::CollisionDetectionResult)<BR>
+*
+* **ServiceClient:**<BR>
+*   `/block_to_pick` (sofar_hbc_01::Block2Pick)<BR>
+*   `/empty_pos` (sofar_hbc_01::ClosestEmptySpace)<BR>
+*   `/baxter/collision_detection/toggle` (sofar_hbc_01::CollisionDetectionToggle)<BR>
+*
+* **Publishes to:**<BR>
+*		`/baxter_moveit_trajectory` (human_baxter_collaboration::BaxterTrajectory)<BR>
+*		`robot/limb/<ARM>/<ARM>_gripper` (human_baxter_collaboration::BaxterGripperOpen)<BR>
+*
+* **Subscribes to:**<BR>
+*		`/baxter_moveit_trajectory/result` (human_baxter_collaboration::BaxterTrajectoryResult)<BR>
+*
+* Description:
+*
+* This class implements the whole FSM for one
+* arm, separating it from the planning space
+*	setup and parameter retrieval.
+* The states evolve as follows:
+*	0.	START 			-> 	simply re-initiate the process
+*	1.	REACH 			-> 	retrieve the *closest block to the EEf
+*											and plan to reach a position above it
+*	2.	PICK  			->	lower the EEf over the block (if none
+*											got closer in the meantime)
+*	3.	RAISE 			->	after grasping the block, raise the
+*											EEf above it
+*	4. 
+*		-# PLACE_BLUE	-> 	if the block grasped is blue, move the EEf
+*											toward the plock destination (or the closest
+*											empty spot near it)
+*		-# REMOVE_RED	->	if the block grasped is red, move the EEf
+*											over the nearest empty spot around it
+*	-#	ERR					->	in case of errors in any state, or after
+*											a HIGH severity collision, go back in the
+*											rest pose (if not there already), before
+*											restarting (introducing a random delay).
+*
+********************************************/
 
 #include "sofar_hbc_01/FSM.h"
 #include "sofar_hbc_01/Block2Pick.h"
@@ -69,10 +117,11 @@ FSM::FSM(	std::shared_ptr<ros::NodeHandle> node_handle,
 void FSM::init()
 {
 	waitForServices(std::vector<std::shared_ptr<ros::ServiceClient> > {client_b2p, client_ces});
-	FSM_clock.start();
-	evolve = true;
-	ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
 	std::srand(std::time(nullptr));
+	FSM::resetCollisionWait();
+	ROS_INFO("BAXTER_FSM_%s: ON", ARM.c_str());
+	evolve = true;
+	FSM_clock.start();
 }
 
 void FSM::setPickHeight(double n_height)
@@ -92,6 +141,7 @@ void FSM::setBlockDest(std::vector<double> block_dest)
 
 void FSM::setRestPose(std::vector<double> rest_pose)
 {
+		if (rest_pose.size() < 7){	throw std::invalid_argument("Expected 7 values");	}
 		baxter_rest_pose_ = rest_pose;
 }
 
@@ -303,7 +353,6 @@ state_t FSM::start()
 	if (block != nullptr){
 		gripperOpen(true);
 		ros::Duration(0.3).sleep();
-		// setBlockGrasped(block->getName(), false);	
 	}
 	block = nullptr;
 	
@@ -325,8 +374,6 @@ state_t FSM::reachBlock()
 	// plan and publish it
 	
 	return generatePlan(goal_pose) ? PICK : ERR;
-	
-	// return next_state;
 }
 
 state_t FSM::pickBlock()
@@ -340,14 +387,10 @@ state_t FSM::pickBlock()
 	// from the previous one, go to REACH (looping?)
 	if (block == nullptr){	return ERR;	}
 	
-	// setBlockGrasped(block->getName(), true);  //< technically not grasped yet,
-																						//	but setting this here makes sense
-	
 	gripperOpen(true);
 			
 			// go down to the block, being sure to correctly orient the eef
 	goal_pose = block->getPose();
-	// goal_pose.position.z -= 0.01; // try to go a little below the midpoint
 	graspQuat(&(goal_pose.orientation));
 	
 	geometry_msgs::Pose mid_rot;
@@ -389,10 +432,7 @@ state_t FSM::placeBlue()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 	
-	// applyDynamicCollisionObjects();
 	return generatePlan(goal_pose) ? START : ERR;
-	// the removal is Asynchronous, test if it causes problems
-	// removeDynamicCollisionObjects(); //< remove it asap since its async
 	//< the gripper will open in START			
 }
 
@@ -410,11 +450,7 @@ state_t FSM::removeRed()
 	}
 	goal_pose = offsetGoal(ces.response.empty_pose);
 			
-	// applyDynamicCollisionObjects();
 	return generatePlan(goal_pose) ? START : ERR;
-	// the removal is Asynchronous, test if it causes problems
-	// removeDynamicCollisionObjects();
-	// return succ;	//< the gripper will open in START	
 }
 
 state_t	FSM::rest()
@@ -422,11 +458,9 @@ state_t	FSM::rest()
 	// open the gripper to release the obj (if any)
 	if (block != nullptr)
 	{
-		// setBlockGrasped(block->getName(), false);
 		gripperOpen(true);
 		block = nullptr;
 		ros::Duration(0.3).sleep();
-		// BAXTER_ATTEMPTS_ = 0;
 	}
 	
 	state_t succ = START;	
@@ -435,11 +469,7 @@ state_t	FSM::rest()
 		generatePlan(baxter_rest_pose_);
 		succ = IDLE;
 		ROS_WARN("BAXTER_FSM_%s: GOING BACK TO REST POSE", ARM.c_str());
-		/*	This wait is mainly used in the case of rest_pose
-				after a collision is detected
-			*/
-		double wait = 3.0 * std::rand()/RAND_MAX;
-		ros::Duration(wait).sleep();
+		
 	}
 	
 	BAXTER_ATTEMPTS_++;
@@ -456,6 +486,11 @@ bool FSM::stateEvolution(){
 	switch (state){
 		case START:
 		{
+			/*	This wait is mainly used in the case of rest_pose
+				after a collision is detected
+			*/
+			ros::Duration(collision_wait).sleep();
+			FSM::resetCollisionWait();
   		ROS_INFO("BAXTER_FSM_%s: START", ARM.c_str());
 			next_state = FSM::start();
 			// auto_evolve = true; //< IT MUST evolve automatically from start to reach/err
@@ -655,8 +690,9 @@ bool FSM::collisionPolicy(	sofar_hbc_01::CollisionDetectionResult::Request &req,
 		res.cd_on = false;
 		
 		BAXTER_ATTEMPTS_ = 0;
-		
-		
+		// modify the collision_wait so that the next START
+		// will wait a random amount of time
+		FSM::setCollisionWait();
 	}	//< rollback
 	else if (req.severity == "LOW")
 	{
@@ -669,7 +705,14 @@ bool FSM::collisionPolicy(	sofar_hbc_01::CollisionDetectionResult::Request &req,
 	return true;
 }
 
-
+void FSM::resetCollisionWait()
+{
+	collision_wait = 0.01;
+}
+void FSM::setCollisionWait()
+{
+	collision_wait = 0.5 + 3.0 * std::rand()/RAND_MAX;
+}
 // NOTE: theoretically, a lot of race conditions might appear with evolve, state, next_state
 // Nevertheless, due to how the state progression is designed, they should in the concrete case
 // never happen, since the trajectoryResult is expected to arrive only when evolve = false, and thus

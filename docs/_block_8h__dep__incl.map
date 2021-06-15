@@ -1,0 +1,9 @@
+<map id="include/sofar_hbc_01/Block.h" name="include/sofar_hbc_01/Block.h">
+<area shape="rect" id="node1" title="Class definition of the Block item." alt="" coords="359,5,517,47"/>
+<area shape="rect" id="node2" href="$_f_s_m_8h.html" title="Class definition of the FSM behavior." alt="" coords="120,95,279,136"/>
+<area shape="rect" id="node5" href="$_block_8cpp.html" title="Class implementation of the Block item." alt="" coords="303,102,411,129"/>
+<area shape="rect" id="node6" href="$checkboard__empty__pos__server_8cpp.html" title="Node returning an empty spot near a query point." alt="" coords="435,95,604,136"/>
+<area shape="rect" id="node7" href="$closest__block_8cpp.html" title="Node returning the *closest block to a given pose." alt="" coords="629,102,789,129"/>
+<area shape="rect" id="node3" href="$finite__state__machine_8cpp.html" title="Node setting up the environment for FSM class." alt="" coords="5,184,215,211"/>
+<area shape="rect" id="node4" href="$_f_s_m_8cpp.html" title="Class implementation of the FSM behavior." alt="" coords="239,184,339,211"/>
+</map>

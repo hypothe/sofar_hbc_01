@@ -1,4 +1,32 @@
-/* Author: Marco G. Fedozzi */
+/****************************************//**
+* \file checkboard_empty_pos_server.cpp
+* \brief Node returning an empty spot near a query point
+* \author Laura Triglia
+* \version 1.0
+* \date 14/06/2021
+*
+* \details
+*
+* **ServiceServer:**<BR>
+*   `/empty_pos` (sofar_hbc_01::ClosestEmptySpace)<BR>
+*
+* **ServiceClient:**<BR>
+*   `/tf/blocks` (sofar_hbc_01::BlocksPoses)<BR>
+*
+*
+* Description:
+*
+* This node returns an empty spot near a query
+* point passed to it in the service request.
+* A 3x3 grid centered in the query point is 
+* constructed: the distance of each block,
+* read from /tf/blocks, from the center of
+* the cell is computed. The position of the 
+* first cell having no blocks closer then a
+* given threshold is considered unencumbered
+* and thus returned.
+*
+********************************************/
 
 #include "ros/ros.h"
 
@@ -16,7 +44,7 @@
 double max_dist = 0.04;
 
 ros::ServiceClient client_blocks_tf;
-	std::vector<geometry_msgs::Point> shift;
+std::vector<geometry_msgs::Point> shift;
 
 double dist2(geometry_msgs::Pose pose1, geometry_msgs::Pose pose2){
 	return std::sqrt(	std::pow(pose2.position.x - pose1.position.x, 2) + 

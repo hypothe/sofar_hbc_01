@@ -1,3 +1,30 @@
+/****************************************//**
+* \file gripper_routing.cpp
+* \brief Node gripper control adapter
+* \author Marco Gabriele Fedozzi (5083365@studenti.unige.it)
+* \version 1.0
+* \date 13/06/2021
+*
+* \details
+*
+* **Publishes to:**<BR>
+*		`/robot/end_effector/left_gripper/gripper_action/goal` (control_msgs::GripperCommandActionGoal)<BR>
+*		`/robot/end_effector/right_gripper/gripper_action/goal` (control_msgs::GripperCommandActionGoal)<BR>
+*
+* **Subscribes to:**<BR>
+*		`robot/limb/left/left_gripper` (human_baxter_collaboration::BaxterGripperOpen)<BR>
+*		`robot/limb/right/right_gripper` (human_baxter_collaboration::BaxterGripperOpen)<BR>
+*
+* Description:
+*
+* This node is an adapter, simply routing the
+*	messages wrote by the finite_state_machine
+*	to the simulation used to close the grippers
+*	to those that the real Baxter controller
+*	will need.
+*
+********************************************/
+
 #include "ros/ros.h"
 
 #include "human_baxter_collaboration/BaxterGripperOpen.h"

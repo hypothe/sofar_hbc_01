@@ -1,0 +1,12 @@
+<map id="include/sofar_hbc_01/utils.h" name="include/sofar_hbc_01/utils.h">
+<area shape="rect" id="node1" title="Utility functions definition." alt="" coords="428,5,587,47"/>
+<area shape="rect" id="node2" href="$_f_s_m_8h.html" title="Class definition of the FSM behavior." alt="" coords="193,95,352,136"/>
+<area shape="rect" id="node3" href="$finite__state__machine_8cpp.html" title="Node setting up the environment for FSM class." alt="" coords="5,184,215,211"/>
+<area shape="rect" id="node5" href="$_link_8h.html" title="Class definition of the Link item." alt="" coords="428,95,587,136"/>
+<area shape="rect" id="node6" href="$collision__detection_8cpp.html" title="Node performing periodic collision detection." alt="" coords="363,184,558,211"/>
+<area shape="rect" id="node8" href="$checkboard__empty__pos__server_8cpp.html" title="Node returning an empty spot near a query point." alt="" coords="611,95,780,136"/>
+<area shape="rect" id="node9" href="$closest__block_8cpp.html" title="Node returning the *closest block to a given pose." alt="" coords="805,102,965,129"/>
+<area shape="rect" id="node10" href="$utils_8cpp.html" title="Utility functions implementation." alt="" coords="989,102,1089,129"/>
+<area shape="rect" id="node4" href="$_f_s_m_8cpp.html" title="Class implementation of the FSM behavior." alt="" coords="239,184,339,211"/>
+<area shape="rect" id="node7" href="$_link_8cpp.html" title="Class implementation of the Link item." alt="" coords="582,184,681,211"/>
+</map>

@@ -1,4 +1,12 @@
-# Collision Detection toggle
+##	\file CollisionDetectionResult.srv 
+#		\brief Info on a collision
+#
+#		\details
+#		Severity can be used by the server to enact different
+#		policies.
+#		The response contains whether the collision detection
+#		should be temporarily disabled or not by the client.
+#		
 
 string arm
 string severity

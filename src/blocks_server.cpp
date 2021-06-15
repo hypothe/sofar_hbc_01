@@ -1,7 +1,7 @@
 /**
- * @file tf_server.cpp
+ * @file blocks_server.cpp
  * @author Georgii A. Kurshakov (kurshakov98@gmail.com)
- * @brief A node reading data from /tf, /unity_tf and transferring the data to /tf/baxter, /tf/human topics and /tf/blocks service.
+ * @brief A node reading data from /tf, /unity_tf and transferring the data to /tf/blocks service.
  * @date 2021-05-31
  * 
  * @copyright Copyright (c) 2021

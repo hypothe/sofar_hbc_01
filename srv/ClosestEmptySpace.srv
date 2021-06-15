@@ -1,4 +1,5 @@
-# position of an empty spot on the table
+##	\file ClosestEmptySpace.srv 
+#		\brief Position of an empty spot on the table
 
 string arm
 string block_name

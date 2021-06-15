@@ -1,12 +1,10 @@
-# request for picking a block
+##	\file Block2Pick.srv 
+#		\brief Request on block to pick pose
 
-# rqst: which arm it is and where it is
 string arm
 geometry_msgs/Pose eef_pose
 
 ---
-
-# rply: which block it is and where it is
 
 string block_name
 string block_color

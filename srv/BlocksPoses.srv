@@ -1,4 +1,5 @@
-# Request for current blocks position w.r.t. world frame
+##	\file BlocksPoses.srv 
+#		\brief  Request for current blocks position w.r.t. world frame
 
 ## rqst: empty, a signal
 

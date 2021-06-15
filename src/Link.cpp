@@ -1,4 +1,18 @@
-/* Author: Marco G. Fedozzi */
+/****************************************//**
+* \file Link.cpp
+* \brief Class implementation of the Link item
+* \author Marco Gabriele Fedozzi (5083365@studenti.unige.it)
+* \version 1.0
+* \date 14/06/2021
+*
+* \details
+*
+* Description:
+*
+* This script implements the Link class
+*	defined at Link.h
+*
+********************************************/
 
 #include "sofar_hbc_01/Link.h"
 #include "ros/ros.h"
@@ -54,7 +68,9 @@ void Link::updateCollisionObject()
 	fcl::Quaternionf q(	pose.orientation.w, pose.orientation.x,
 											pose.orientation.y, pose.orientation.z);
 	
-	fcl::Vector3f vec_mid_dist(0.0,0.0,length/2.0), vec_start_point(pose.position.x, pose.position.y ,pose.position.z);
+	fcl::Vector3f vec_mid_dist(0.0,0.0,length/2.0), vec_start_point(pose.position.x,
+	 																																pose.position.y,
+	 																																pose.position.z);
 	// get the link middle point by adding the semi-length of the link oriented
 	fcl::Vector3f vec_mid_point = q*vec_mid_dist + vec_start_point;
 	

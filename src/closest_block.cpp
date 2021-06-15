@@ -1,4 +1,42 @@
-/* Author: Marco G. Fedozzi */
+/****************************************//**
+* \file closest_block.cpp
+* \brief Node returning the *closest block to a given pose
+* \author Marco Gabriele Fedozzi (5083365@studenti.unige.it)
+* \version 1.0
+* \date 03/06/2021
+*
+* \details
+*
+* **ServiceServer:**<BR>
+*   `/block_to_pick` (sofar_hbc_01::Block2Pick)<BR>
+*
+* **ServiceClient:**<BR>
+*   `/tf/blocks` (sofar_hbc_01::BlocksPoses)<BR>
+*
+*
+* Description:
+*
+* This node returns the pose of a block to
+* move the end effector toward.
+* Despite the name, the position returned is
+* not necessarily that of the closest blue
+* block, but there is a simple priority
+* system in place:
+* 1. 	If the arm passed to the request is the
+*			left one and there is a block near the
+*			center line of the workspace, return
+*			that block (since we want to free up the
+*			"common space" as soon as possible);
+*	2.	If there are unobstructed blue blocks
+*			in the area served by the queries arm,
+*			return the one closest to the current
+*			arm pose;
+*	3.	If there are only blue blocks obstructed
+*			by red ones in the area served by the
+*			queried arm, return the pose of the red
+*			one covering the closest blue block;
+*
+********************************************/
 
 #include "ros/ros.h"
 
@@ -11,7 +49,7 @@
 #include "sofar_hbc_01/Block.h"
 #include "sofar_hbc_01/utils.h"
 
-double pickThreshold = 0.05;
+double pickThreshold = 0.05; //< max distance of a block from the center line to be considered still in the middle
 
 ros::ServiceClient client_blocks_tf;
 
@@ -19,9 +57,20 @@ float table_height = -1;
 std::vector<double> table_pos, table_dim;
 float block_size = -1;
 
-std::map<std::string, std::shared_ptr<Block> > blocks_;
+std::map<std::string, std::shared_ptr<Block> > blocks_; //< collection of the blocks (\sa Block),
+																												//< with their name as key
 
 
+/****************************************//**
+* Service callback (`/block_to_pick`).
+*
+* \param req (sofar_hbc_01::Block2Pick::Request&):
+*										the service request
+*										eef_pose (geometry_msgs::Pose)<BR>
+* \param res (sofar_hbc_01::Block2Pick::Response&):
+*										the service response
+*										
+********************************************/
 bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pick::Response &res){
 
 	// retrieve current end effector pose
@@ -31,7 +80,6 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 	std::vector<double> block_dest;
 	geometry_msgs::Pose block_dest_pose;
 	
-	/*if(!ros::param::get(std::string("block_placed_"+req.arm), placed)){	ROS_ERROR("No parameter named 'block_placed' found");	}*/
 	
 	if(!ros::param::get(std::string("block_grasped"), grasped)){	ROS_ERROR("No parameter named 'block_grasped' found");	}
 	if(!ros::param::get(std::string("block_dest_"+req.arm), block_dest)){	ROS_ERROR("No parameter named 'block_dest_%s' found", req.arm.c_str());	}
@@ -40,22 +88,17 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 	sofar_hbc_01::BlocksPoses bp;
 	client_blocks_tf.call(bp);
 	
-	//int n_blocks = bp.response.blocks_poses.size;
 	geometry_msgs::PoseStamped block_pose;
 	std::string block_name;
 	std::shared_ptr<Block> block;
 	
 	// separate in blue and red blocks those not yet placed
-	//for (int i=0; i<n_blocks; i++){
 	for (auto block_pose : bp.response.blocks_poses){
 
 		block_name = block_pose.header.frame_id;
 		if (!blocks_.count(block_name)) continue; // no element with such name found
 		
-		// block = std::make_shared<Block>(blocks_[block_name]);
 		block = blocks_[block_name];
-		
-		/* block->setPlaced(placed[block_name]); */
 		
 		// do not consider already placed blocks;
 		if (placed[block_name] || grasped[block_name]){	continue;	}
@@ -109,18 +152,13 @@ bool blockCllbck(sofar_hbc_01::Block2Pick::Request &req, sofar_hbc_01::Block2Pic
 		//	Dirty, but should work.
 		middlePlaced = (req.arm == "left" && 
 										abs(blue_block->getPose().position.y - table_pos[1]) <= pickThreshold &&
-										abs(blue_block->getPose().position.x - table_pos[0]) < table_dim[0]/2
+										abs(blue_block->getPose().position.x - table_pos[0]) < table_dim[0]/2.0
 										);
 		if (middlePlaced){
 			ROS_INFO("Block %s in the MIDDLE", blue_block->getName().c_str());
 		}
 		
 		dist = dist3(eef_pose, blue_block->getPose());
-		/*ROS_INFO("Block %s obstructed by %s (%d) dist: %lf", 	blue_block->getName().c_str(), 
-																													blue_block->getObstructedBy().c_str(),
-																													blue_block->getObstructedBy().empty(),
-																													dist
-																													);*/
 		// 
 		if (blue_block->getObstructedBy().empty() && (dist < min_dist || middlePlaced))
 		{
@@ -188,10 +226,6 @@ int main(int argc, char** argv)
 	
 	// client that retrieves the current blocks tf
   client_blocks_tf = node_handle.serviceClient<sofar_hbc_01::BlocksPoses>("/tf/blocks");
-  /*while(!client_blocks_tf.exists()){
-  	ROS_WARN("Service %s not found.", client_blocks_tf.getService().c_str());
-	  client_blocks_tf.waitForExistence(ros::Duration(2));
-  }*/
   
   std::vector<std::shared_ptr<ros::ServiceClient> > vec_client;
   vec_client.push_back(std::make_shared<ros::ServiceClient>(client_blocks_tf));

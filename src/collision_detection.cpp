@@ -1,4 +1,62 @@
-/* Author: Marco G. Fedozzi */
+/****************************************//**
+* \file collision_detection.cpp
+* \brief Node performing periodic collision detection
+* \author Marco Gabriele Fedozzi (5083365@studenti.unige.it)
+* \version 1.0
+* \date 14/06/2021
+*
+* \details
+*
+* **ServiceServer:**<BR>
+*   `/baxter/collision_detection/toggle` (sofar_hbc_01::CollisionDetectionToggle)<BR>
+*
+* **ServiceClient:**<BR>
+*   `/baxter/collision_detection/left/result` (sofar_hbc_01::CollisionDetectionResult)<BR>
+*
+* **ServiceClient:**<BR>
+*   `/baxter/collision_detection/right/result` (sofar_hbc_01::CollisionDetectionResult)<BR>
+*
+* **Publishes to:**<BR>
+*		`/baxter_moveit_trajectory/stop` (human_baxter_collaboration::BaxterStopTrajectory)<BR>
+*
+* **Subscribes to:**<BR>
+*		`/tf` (tf2_msgs::TFMessage)<BR>
+*		`/tf_static` (tf2_msgs::TFMessage)<BR>
+*
+* Description:
+*
+* This node holds an inner representation
+*	of the Baxter and Human arms using data from
+*	urdfs (the official Baxter one and a custom
+* human one) to generate cylinder links.
+*	Using the Flexible Collision Library tools,
+*	these cylinders are treated as CollisionObjects
+*	and stored in three managers groups:
+*	1.	Human arms
+*	2.	Baxter left arm
+*	3.	Baxter right arm
+*	A periodic callback (50Hz) retrieves the data
+*	of the baxter and human joints from `/tf`,
+* using the positions and orientations to
+* update the CollisionObjects. It then
+*	performs distance checks between the three
+*	managers, considering a collision as possible
+*	if the distance gets lower then an arbitrary
+*	threshold.
+* In that case a message is published on
+* `/baxter_moveit_trajectory/stop` in order
+*	to make the Unity simulation (or, ideally,
+*	the robot controller) stop. At the same time
+*	a service request is issued to the FSM of
+* the arm(s) involved in the collision, with
+*	a notion of the "severity" of the collision,
+* which can thus be served by different recovery
+* policies.
+* The collision detection can be enabled or
+* disabled upon request (which might be 
+*	necessary) for some recovery policies.
+*
+********************************************/
 
 #include "ros/ros.h"
 #include <ros/console.h>
@@ -29,7 +87,7 @@ using Real = typename fcl::constants<double>::Real;
 
 const std::string human_urdf = std::string("human_description");
 const std::string baxter_urdf = std::string("baxter_description");
-const double check_period_ = 0.2;
+const double check_period_ = 0.02;
 
 const double bxtr_wrist_ext_len = 0.2; //< model the joints after the wrist only with one joint but longer
 
@@ -73,8 +131,9 @@ bool toggleCD(sofar_hbc_01::CollisionDetectionToggle::Request &req,
 void collisionCheck(const ros::TimerEvent&)
 {
 	// vvv If collision detection is momentarily disabled ignore this callback vvv
+	if (!cd_on_R && !cd_on_L)	{return;}
 	
-	
+	auto start = std::chrono::high_resolution_clock::now();
 	geometry_msgs::TransformStamped transformStamped;
 	geometry_msgs::Pose pose;
 	// is this temp vector creation too slow?
@@ -138,7 +197,6 @@ void collisionCheck(const ros::TimerEvent&)
 			client_cd_res_L.call(cdres);
 			
 			setCollisionL(cdres.response.cd_on);
-			//cd_on_L = cdres.response.cd_on;
 		}
 	}
 	if (cd_on_R)
@@ -160,7 +218,6 @@ void collisionCheck(const ros::TimerEvent&)
 			cdres.request.arm = "right";
 			cdres.request.severity = "LOW";
 			client_cd_res_R.call(cdres);
-			// cd_on_R = cdres.response.cd_on;
 			setCollisionR(cdres.response.cd_on);
 		}
 	}
@@ -196,19 +253,19 @@ void collisionCheck(const ros::TimerEvent&)
 			cdres.request.arm = "left";
 			cdres.request.severity = "HIGH";
 			client_cd_res_L.call(cdres);
-			// cd_on_L = cdres.response.cd_on;
 			setCollisionL(cdres.response.cd_on);
 			
 			cdres.request.arm = "right";
 			cdres.request.severity = "HIGH";
 			client_cd_res_R.call(cdres);
-			// cd_on_R = cdres.response.cd_on;
 			setCollisionR(cdres.response.cd_on);
 		}
 	}
 	
-	// TODO: msg publishing on baxter_moveit_trajectory/stop topic
+	auto stop = std::chrono::high_resolution_clock::now();
 	
+	std::chrono::duration<double> elapsed = stop - start;
+	ROS_DEBUG("It took %lf seconds.", elapsed.count());
 }
 
 
